@@ -2,8 +2,8 @@
 #include <fstream>
 #include <sstream>
 #include <assert.h>
-#include "DataType.h"
-#include "cacheflow.h"
+#include "../cacheFlowGraph/DataType.h"
+#include "../cacheFlowGraph/cacheflow.h"
 
 
 
