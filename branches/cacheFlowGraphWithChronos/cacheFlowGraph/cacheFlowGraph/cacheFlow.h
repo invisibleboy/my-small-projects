@@ -43,8 +43,8 @@ private:
 		int ControlFlow();
         int TopoSort();
         //int GenAndCallsite();
-        int RcsAnalysis(CFunction *pFunc);
-        int LcsAnalysis(CFunction *pFunc);
+        int RcsAnalysis(CFunction *pFunc, vector<int> &Rcs);
+        int LcsAnalysis(CFunction *pFunc, vector<int> &Lcs);
         int Write(ostream &os, const vector<int> &flow);
 		
 
@@ -54,7 +54,7 @@ private:
 
 		CFunction *ConstructFunction( CFunction *pOriFunc, uint nStart );
 		int RemoveUnreached( CFunction *pFunction );
-		int Graphviz(CFunction *pFunc);
+		int Graphviz();
 
 private:
         list<CFunction *> m_WorkList;

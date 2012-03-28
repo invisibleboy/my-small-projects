@@ -62,7 +62,7 @@
 				Name="VCLinkerTool"
 				AdditionalDependencies="cacheFlowGraph.lib"
 				LinkIncremental="2"
-				AdditionalLibraryDirectories="C:\project\develop\cacheFlowGraph\Debug"
+				AdditionalLibraryDirectories="C:\project\cacheFlowGraphWithChronos\cacheFlowGraph\Debug"
 				GenerateDebugInformation="true"
 				SubSystem="1"
 				TargetMachine="1"

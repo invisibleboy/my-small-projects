@@ -10,7 +10,7 @@
 #include <set>
 
 #define CACHE_LINE_SIZE 8
-#define CACHE_SIZE      (1024*1)
+#define CACHE_SIZE      (128)
 #define CACHE_ASSOCIATIVITY 1
 #define CACHE_SET       (CACHE_SIZE/CACHE_LINE_SIZE/CACHE_ASSOCIATIVITY)
 
@@ -99,7 +99,10 @@ public:
 
 public:
         CBasicBlock(uint nStart) { m_nStart = nStart; m_bCall = false;m_bEntryCall = true; m_nTermType = CInstruction::ORDINARY;};
+		CBasicBlock(uint nStart, uint nId) { m_nStart = nStart; m_nId = nId; };
+		uint GetId() { return m_nId; }
         uint GetStart() { return m_nStart; }
+		void SetStart( uint nStart ) { m_nStart = nStart; }
         bool IsCall() { return m_bCall; }
         void SetCall( bool bCall) { m_bCall = bCall; }
         bool IsEntryCall() { return m_bEntryCall; }
@@ -117,6 +120,7 @@ public:
         void Add( CInstruction *pInst);
 
 private:
+	uint m_nId;
         uint m_nStart;
         CInstruction::InstType m_nTermType;                     // The type of the last instruction of this block
         bool m_bCall;                                                           // whether it is a call instruction
@@ -140,7 +144,7 @@ public:
 	void SetEnd( uint nEnd ) { m_nEnd = nEnd; }
 	uint GetEnd() { return m_nEnd; }
 	uint GetStart() { return m_nStart; }
-	void SetStart( uint nStart ) { m_nStart = nStart; }
+	void SetStart(uint nStart) { m_nStart = nStart; }
 	string GetName() { return m_szFunc; }
 
         friend inline ostream & operator << (ostream &os, CFunction &f)
@@ -153,6 +157,12 @@ public:
 
 extern map<uint, CInstruction *> g_hInsts;
 extern map<uint, CFunction *> g_hFuncs;
+extern list<CBasicBlock *> g_Blocks;
+extern CBasicBlock *g_pEntryBlock;
+extern CBasicBlock *g_pExitBlock;
+extern uint g_nEntryAddress;
+extern uint g_nExitAddress;
+
 int CopyCS(vector<int> &source, vector<int> &target, uint n );
 int MergeCS(vector<int> &first, const vector<int> &second, vector<int> &target, uint n );
 int UnifyCS(vector<int> &first, vector<int> &second, vector<int> &target, uint n );
@@ -167,6 +177,9 @@ int PosDump(ostream &os, map<int, set<int> > &flow, const vector<bool> &hit);
 
 int DiffSet( const set<int> &s1, const set<int> &s2);
 int CommonSet( const set<int> &s1, const set<int> &s2);
+
+uint hex2dec(const string &szHex);
+uint dec2dec(const string &szDec );
 
 
 #endif

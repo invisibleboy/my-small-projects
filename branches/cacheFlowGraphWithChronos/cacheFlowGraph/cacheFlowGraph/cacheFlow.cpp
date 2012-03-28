@@ -8,29 +8,31 @@ ofstream g_RcsFile, g_LcsFile, g_GenFile;
 
 int CCacheFlow::Run()
 {
-	ControlFlow();
-    TopoSort();
+	//ControlFlow();
+    //TopoSort();
 
-    list<CFunction *>::iterator f_p = m_WorkList.begin(), f_e = m_WorkList.end();
+  /*  list<CFunction *>::iterator f_p = m_WorkList.begin(), f_e = m_WorkList.end();
     for(; f_p != f_e; ++ f_p )
     {
-        CFunction *pFunc = *f_p;
+        CFunction *pFunc = *f_p;*/
+	Graphviz();
 #ifndef UPPER
-        RcsAnalysis( pFunc );
-        LcsAnalysis( pFunc );
+		vector<int> Rcs, Lcs;
+        RcsAnalysis( NULL, Rcs );
+        LcsAnalysis( NULL, Lcs);
 #else
         
         PosRcsAnalysis( pFunc );
         PosLcsAnalysis( pFunc );
 #endif
         
-        g_RcsFile << "\n====================" << pFunc->m_szFunc << "================" << endl;
-        g_LcsFile << "\n====================" << pFunc->m_szFunc << "================" << endl;
-        vector<bool> hit;
-        hit.assign(CACHE_SET, false);
+   //     g_RcsFile << "\n====================" << pFunc->m_szFunc << "================" << endl;
+   //     g_LcsFile << "\n====================" << pFunc->m_szFunc << "================" << endl;
+   //     vector<bool> hit;
+   //     hit.assign(CACHE_SET, false);
 #ifndef UPPER
-        Dump(g_RcsFile, m_GenRcsP[pFunc], hit );
-        Dump(g_LcsFile, m_GenLcsP[pFunc], hit );
+    //    Dump(g_RcsFile, m_GenRcsP[pFunc], hit );
+   //     Dump(g_LcsFile, m_GenLcsP[pFunc], hit );
 #else
 
 		m_PosGenRcsP[pFunc]->Dump(g_RcsFile, hit);
@@ -38,11 +40,10 @@ int CCacheFlow::Run()
 #endif
 
 
-        if( pFunc->m_szFunc == "__vectors" )
-        {
+        
                 g_GenFile << CACHE_SET << endl;
 #ifndef UPPER
-                Write(g_GenFile, m_GenRcsP[pFunc]);
+                Write(g_GenFile, Rcs);
 #else
                 g_GenFile << *m_PosGenRcsP[pFunc];
 				//PosWrite(g_GenFile, m_PosGenRcsP[pFunc]);
@@ -50,14 +51,12 @@ int CCacheFlow::Run()
                 g_GenFile << endl << endl;
 
 #ifndef UPPER
-                Write(g_GenFile, m_GenLcsP[pFunc]);
+                Write(g_GenFile, Lcs);
 #else
                 g_GenFile << *m_PosGenLcsP[pFunc];
 				//PosWrite(g_GenFile, m_PosGenLcsP[pFunc]);
 #endif
-        }
-	}
-
+       
     return 0;
 }
 
@@ -158,13 +157,12 @@ int CCacheFlow::TopoSort()
     return 0;
 }
 
-int CCacheFlow::RcsAnalysis(CFunction *pFunc)
+int CCacheFlow::RcsAnalysis(CFunction *pFunc, vector<int> &Rcs)
 {
-    vector<int> &GenRcsP = m_GenRcsP[pFunc];
-    GenRcsP.assign(CACHE_SET, CACHE::BOTTOM);
+    Rcs.assign(CACHE_SET, CACHE::BOTTOM);
     // 1. initilize
     map<CBasicBlock *, vector<int> > InRcs, OutRcs, GenRcs;
-    list<CBasicBlock *>::iterator b_p = pFunc->m_Blocks.begin(), b_e = pFunc->m_Blocks.end();
+    list<CBasicBlock *>::iterator b_p = g_Blocks.begin(), b_e = g_Blocks.end();
     for(; b_p != b_e; ++ b_p )
     {
         CBasicBlock *bb = *b_p;
@@ -180,14 +178,7 @@ int CCacheFlow::RcsAnalysis(CFunction *pFunc)
         for(; i_p != i_e; ++ i_p )
         {
             CInstruction *pInst = *i_p;
-			GenRcsB[pInst->GetCacheSet()] = pInst->GetTag();
-			if( pInst->GetCallee() != NULL )    // identifying the jumpOut instructions
-			{
-				CFunction *pCallee = pInst->GetCallee();
-				assert( pCallee != NULL );
-				vector<int> &CalleeRcs = m_GenRcsP[pCallee];
-				MergeCS(GenRcsB, CalleeRcs, GenRcsB, CACHE_SET );					
-			}				        
+			GenRcsB[pInst->GetCacheSet()] = pInst->GetTag();							        
         }
     }
 
@@ -200,7 +191,7 @@ int CCacheFlow::RcsAnalysis(CFunction *pFunc)
                 bFirst = false;
         else
                 bChange = false;
-        b_p = pFunc->m_Blocks.begin();
+        b_p = g_Blocks.begin();
         for(; b_p != b_e; ++ b_p )
         {
             CBasicBlock *bb = *b_p;
@@ -229,20 +220,19 @@ int CCacheFlow::RcsAnalysis(CFunction *pFunc)
         }
     }
     // 3. record current function's GenRcsP
-    CBasicBlock *tailBlock = pFunc->m_Blocks.back();
-    vector<int> &outRcsTail = OutRcs[tailBlock];
-    CopyCS( outRcsTail, GenRcsP, CACHE_SET );
+  
+    vector<int> &outRcsTail = OutRcs[g_pExitBlock];
+    CopyCS( outRcsTail, Rcs, CACHE_SET );
 
     return 0;
 }
 
-int CCacheFlow::LcsAnalysis(CFunction *pFunc)
+int CCacheFlow::LcsAnalysis(CFunction *pFunc, vector<int> &Lcs)
 {
-        vector<int> &GenLcsP = m_GenLcsP[pFunc];
-        GenLcsP.assign(CACHE_SET, CACHE::BOTTOM);
+       Lcs.assign(CACHE_SET, CACHE::BOTTOM);
         // 1. initilize
         map<CBasicBlock *, vector<int> > InLcs, OutLcs, GenLcs;
-        list<CBasicBlock *>::iterator b_p = pFunc->m_Blocks.begin(), b_e = pFunc->m_Blocks.end();
+        list<CBasicBlock *>::iterator b_p = g_Blocks.begin(), b_e = g_Blocks.end();
         for(; b_p != b_e; ++ b_p )
         {
             CBasicBlock *bb = *b_p;
@@ -258,15 +248,7 @@ int CCacheFlow::LcsAnalysis(CFunction *pFunc)
             for(; i_p != i_e; ++ i_p )
 			{
                 CInstruction *pInst = *i_p;
-                GenLcsB[pInst->GetCacheSet()] = pInst->GetTag();        
-
-				if( pInst->GetCallee() != NULL )
-				{
-					CFunction *pCallee = pInst->GetCallee();
-					assert( pCallee != NULL );
-					vector<int> &CalleeLcs = m_GenLcsP[pCallee];
-					MergeCS(GenLcsB, CalleeLcs, GenLcsB, CACHE_SET );
-				}
+                GenLcsB[pInst->GetCacheSet()] = pInst->GetTag();     
 			}
         }
 
@@ -279,7 +261,7 @@ int CCacheFlow::LcsAnalysis(CFunction *pFunc)
                         bFirst = false;
                 else
                         bChange = false;
-                b_p = pFunc->m_Blocks.begin();
+				b_p = g_Blocks.begin();
                 for(; b_p != b_e; ++ b_p )
                 {
                         CBasicBlock *bb = *b_p;
@@ -308,9 +290,9 @@ int CCacheFlow::LcsAnalysis(CFunction *pFunc)
                 }
         }
         // 3. record current function's GenLcsP
-        CBasicBlock *headBlock = pFunc->m_Blocks.front();
-        vector<int> &InLcsTail = InLcs[headBlock];
-        CopyCS( InLcsTail, GenLcsP, CACHE_SET );
+       
+        vector<int> &InLcsTail = InLcs[g_pEntryBlock];
+        CopyCS( InLcsTail, Lcs, CACHE_SET );
 
         return 0;
 }
@@ -513,151 +495,8 @@ int CCacheFlow::PreProcess()
 
 int CCacheFlow::ControlFlow()
 {
-	PreProcess(); // add pseudo functions
 
-    map<uint, CFunction *>::iterator i2f_p = g_hFuncs.begin();
-    for(; i2f_p != g_hFuncs.end(); ++ i2f_p )
-    {
-        CFunction *pFunc = i2f_p->second;
-        list<CInstruction *>::iterator i2_p;
-        map<uint, list<CBasicBlock *> > hPreds;
-		map<CInstruction *,  CBasicBlock *> hInst2Block;
-		list<CBasicBlock *> JumpOutBlocks;
-        bool bStartBlock = true;
-        CBasicBlock *pCurBlock = NULL;
-        list<CInstruction *> &insts = pFunc->m_Insts;
-        list<CInstruction *>::iterator i_p = insts.begin();             
-        for(; i_p != insts.end(); ++ i_p )
-        {
-            CInstruction *pInst = *i_p;
-            // deal with labels as new block. label is marked by: function entry, behind RET, JUMP I/O, and CJUMP I/O
-            if( bStartBlock || hPreds.find(pInst->GetAddr() ) != hPreds.end() 
-				|| g_hFuncs.find( pInst->GetAddr() ) != g_hFuncs.end() )
-            {
-                pCurBlock = new CBasicBlock(pInst->GetAddr() );
-                pFunc->m_Blocks.push_back(pCurBlock);   
-				
-				if( i_p != insts.begin() )
-				{
-					list<CInstruction *>::iterator i2_p = i_p;
-					-- i2_p;
-					CInstruction *lastInst = *i2_p;
-					if( lastInst->GetType() == CInstruction::CALL || lastInst->GetType() == CInstruction::ORDINARY )
-					{
-						CBasicBlock *upBlock = hInst2Block[lastInst];
-						hPreds[pInst->GetAddr()].push_back(upBlock);
-					}
-				}
-            }
-
-            if( pInst->GetType() == CInstruction::SINGLE_JUMP )
-            {
-				bStartBlock = true;
-				int nTarget = pInst->GetTarget();	
-				if( nTarget >= pFunc->GetStart() && nTarget < pFunc->GetEnd() )    // within the same function
-				{
-					hPreds[nTarget].push_back(pCurBlock);							
-				}
-				else 
-				{
-					map<uint, CFunction *>::iterator i2f_p = g_hFuncs.find( nTarget );
-					assert( i2f_p != g_hFuncs.end() );
-					//JumpOutBlocks.push_back( pCurBlock );//
-					pInst->SetCallee( i2f_p->second );
-				}
-            }
-            else if( pInst->GetType() == CInstruction::DUAL_JUMP )
-            {
-				bStartBlock = true;
-				int nTarget = pInst->GetTarget();	
-				if( nTarget >= pFunc->GetStart() && nTarget < pFunc->GetEnd() )    // within the same function
-				{
-					hPreds[nTarget].push_back(pCurBlock);
-					hPreds[pInst->GetAddr()+2].push_back(pCurBlock);
-				}
-				else
-				{
-					map<uint, CFunction *>::iterator i2f_p = g_hFuncs.find( nTarget );
-					assert( i2f_p != g_hFuncs.end() );
-					//JumpOutBlocks.push_back( pCurBlock );
-					pInst->SetCallee( i2f_p->second );
-					//hJumpSrc[pFunc] = i2f_p->second;								// jump to a function (or a pseudo function)
-					//hJumpDest[i2f_p->second].push_back( pFunc );
-				}
-            }
-            else if( pInst->GetType() == CInstruction::CALL )               
-            {
-				bStartBlock = false;
-                if( pInst->GetOffset() != 0 )
-				{
-					uint nTarget = pInst->GetTarget();
-					map<uint, CFunction *>::iterator i2f_p = g_hFuncs.find(nTarget);
-                    assert( i2f_p != g_hFuncs.end() );
-					CFunction *pCallee = i2f_p->second;
-					pInst->SetCallee( pCallee );            
-				}
-			}
-			else if( pInst->GetType() == CInstruction::ONE_JUMP )
-			{
-				bStartBlock = true;
-				list<CInstruction *>::iterator i2_p = i_p;
-				++ i2_p;
-				++ i2_p;
-				uint nTarget = (*i2_p)->GetAddr();
-				hPreds[nTarget].push_back( pCurBlock );
-				hPreds[pInst->GetAddr() + 2].push_back( pCurBlock );
-			}
-            else if( pInst->GetType() == CInstruction::RET )
-            {
-                bStartBlock = true;                                     
-            }
-            
-            else if( pInst->GetType() == CInstruction::ORDINARY )
-            {                               
-				bStartBlock = false;
-            }
-            else
-				assert("Invalid instruction");                    
-            pCurBlock->Add(pInst);
-			hInst2Block[pInst] = pCurBlock;
-        }
-
-        // construct the CFG according to hPreds
-        list<CBasicBlock *>::iterator b_p = pFunc->m_Blocks.begin(), b_e = pFunc->m_Blocks.end();
-        for(; b_p != b_e; ++ b_p )
-        {
-            CBasicBlock *bb = *b_p;
-            if( hPreds.find( bb->GetStart() ) != hPreds.end() )
-            {
-                list<CBasicBlock *>::iterator pred_p = hPreds[bb->GetStart()].begin(), pred_e = hPreds[bb->GetStart()].end();
-                for(; pred_p != pred_e; ++ pred_p )
-                {
-                    bb->m_Preds.push_back(*pred_p);
-                    (*pred_p)->m_Succs.push_back(bb);
-                }
-            }
-        }       
-        
-		// Todo: remove the unreachable blocks
-		RemoveUnreached( pFunc );
-
-        // add unique entry and exit block     
-        CBasicBlock *tailBlock = new CBasicBlock(-1);
-        b_p = pFunc->m_Blocks.begin();
-        for(; b_p != b_e; ++ b_p )
-        {
-            CBasicBlock *bb = *b_p;
-            if( bb->m_Succs.empty() || bb->GetTermType() == CInstruction::RET )
-            {
-                bb->m_Succs.push_back(tailBlock);
-                tailBlock->m_Preds.push_back(bb);
-            }
-        }
-        pFunc->m_Blocks.push_back(tailBlock);
-       
-        // print the graphviz file
-        //Graphviz(pFunc);
-    }
+   
     return 0;
 }
 
@@ -726,24 +565,23 @@ int CCacheFlow::Write(std::ostream &os, const std::vector<int> &flow)
 }
 
 
-int CCacheFlow::Graphviz(CFunction *pFunc)
-{
-    string szFileName = pFunc->m_szFunc;
-    szFileName += ".dot";
+int CCacheFlow::Graphviz()
+{    
+    string szFileName = "cfg.dot";
     ofstream os;
     os.open(szFileName.c_str());
 
     os << "digraph{" << endl;
 
 	// node
-    list<CBasicBlock *>::iterator b_p = pFunc->m_Blocks.begin(), b_e = pFunc->m_Blocks.end();
+    list<CBasicBlock *>::iterator b_p = g_Blocks.begin(), b_e = g_Blocks.end();
     for(; b_p != b_e; ++ b_p )
     {
         CBasicBlock *bb = *b_p;
 		if( bb->m_Insts.empty() )
 			os << "exit[label=\"exit";
 		else
-			os << bb->GetStart() << "[label=\"";
+			os << bb->GetStart() << "[label=\"" << "block " << bb->GetId() << "\\n";
         vector<CInstruction *>::iterator i_p = bb->m_Insts.begin(), i_e = bb->m_Insts.end();
         for(; i_p != i_e; ++ i_p )
         {
@@ -752,7 +590,7 @@ int CCacheFlow::Graphviz(CFunction *pFunc)
         os << "\", shape=box];" << endl;    
     }
 
-	b_p = pFunc->m_Blocks.begin();
+	b_p = g_Blocks.begin();
     for(; b_p != b_e; ++ b_p )
     {
         CBasicBlock *bb = *b_p;
