@@ -52,17 +52,26 @@ ofstream g_outf;
 
 int main(int argc, const char * *argv)
 {
-        string szPath = "C:\\Users\\qali\\Downloads\\";
-        string szOutFile = szPath + "controlSequence.txt";
-        g_outf.open(szOutFile.c_str());
+		char szCacheSize[17], szBlockSize[17] ;
+		itoa(CACHE_SIZE, szCacheSize, 10);
+		itoa(CACHE_LINE_SIZE, szBlockSize, 10 );
+
+        string szPath = "C:\\Users\\qali\\Downloads\\controllers\\";
+		string szSequence;
+		for( int i = 1; i < argc; ++ i)
+			szSequence += argv[i];
+        
 
         CController *cons[3];
-        cons[0] = new CController(szPath+"controller1.dasm.gen");
-        cons[1] = new CController(szPath+"controller2.dasm.gen");
-        cons[2] = new CController(szPath+"controller3.dasm.gen");
-
+		
+        cons[0] = new CController(szPath+"controller1" + "_" + szCacheSize + "_" + szBlockSize + ".gen");
+        cons[1] = new CController(szPath+"controller2" + "_" + szCacheSize + "_" + szBlockSize + ".gen");
+        cons[2] = new CController(szPath+"controller3" + "_" + szCacheSize + "_" + szBlockSize + ".gen");
         ParserInput(argc, argv);
 
+
+		string szOutFile = szPath + "controlSequence" + szSequence + "_" + szCacheSize + "_" + szBlockSize +".txt";
+        g_outf.open(szOutFile.c_str());
 
 #ifndef UPPER
 		vector<int>  GenRcs;

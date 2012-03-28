@@ -1,9 +1,19 @@
 #include "DataType.h"
 #include <iomanip>
+#include <assert.h>
 
 map<uint, CInstruction *> g_hInsts;
 map<uint, CFunction *> g_hFuncs;
+list<CBasicBlock *> g_Blocks;
 
+CBasicBlock *g_pEntryBlock;
+CBasicBlock *g_pExitBlock;
+uint g_nEntryAddress;
+uint g_nExitAddress;
+
+
+//ex:
+//004001f0 <rt_MatMultRR_Dbl> lw        $13,8($7)
 CInstruction::CInstruction(std::string &szCmd, int nBigOffset)
 {               
         m_szCmd = szCmd;
@@ -12,41 +22,39 @@ CInstruction::CInstruction(std::string &szCmd, int nBigOffset)
         stringstream ss(szCmd);
         string str;
 
-        ss >> str;
-        //ss >> m_nAddr;
-        str = str.substr(0, str.size()-1);
+        ss >> str;        
         m_nAddr = hex2dec(str);
         m_nAddr += nBigOffset;
         //m_nTag = m_nAddr/CACHE_LINE_SIZE;
 
-        ss >> str;
-        ss >> str;
-        ss >> str;
-        if( str.size() == 2 
-			&& (isdigit(str[0]) || isdigit(str[1]) ) )
-        {
-                ss >> str;
-                ss >> str;
-        }
-        m_szOpc = str;
+  //      ss >> str;
+  //      ss >> str;
+  //      ss >> str;
+  //      if( str.size() == 2 
+		//	&& (isdigit(str[0]) || isdigit(str[1]) ) )
+  //      {
+  //              ss >> str;
+  //              ss >> str;
+  //      }
+  //      m_szOpc = str;
 
-		// set m_nOffset, m_nTarget
-        InstType instType = GetType();
-        if( instType == CInstruction::SINGLE_JUMP || instType == CInstruction::DUAL_JUMP || instType == CInstruction::CALL)
-        {
-                ss >> str;
-                str = str.substr(1, str.size()-1);
-                stringstream ss2(str);
-                ss2 >> m_nOffset;
+		//// set m_nOffset, m_nTarget
+  //      InstType instType = GetType();
+  //      if( instType == CInstruction::SINGLE_JUMP || instType == CInstruction::DUAL_JUMP || instType == CInstruction::CALL)
+  //      {
+  //              ss >> str;
+  //              str = str.substr(1, str.size()-1);
+  //              stringstream ss2(str);
+  //              ss2 >> m_nOffset;
 
-				if( GetOpc() != "call" && GetOpc() != "jump" )
-				{
-					m_nTarget = GetOffset() + 2 + GetAddr();
-				}
-				else
-					m_nTarget = GetOffset();
-				
-        }
+		//		if( GetOpc() != "call" && GetOpc() != "jump" )
+		//		{
+		//			m_nTarget = GetOffset() + 2 + GetAddr();
+		//		}
+		//		else
+		//			m_nTarget = GetOffset();
+		//		
+  //      }
 
 		// set tag, cache line number
 		uint setMask = CACHE_SET - 1;
@@ -97,7 +105,29 @@ uint hex2dec(const string &szHex)
                         nValue += szHex[i] - 87;
                 else
                 {
+					assert(false);
                         cout << szHex << " is not a valid number!\n";
+                        exit(1);
+                }
+        }
+        return nValue;
+}
+
+uint dec2dec(const string &szDec)
+{
+        uint nSize = szDec.size();
+        uint nValue = 0;
+        for( int i = 0; i < nSize; ++ i )
+        {
+                nValue = nValue * 10;
+                if( szDec[i] <= '9' && szDec[i] >= '0' )
+                        nValue += szDec[i] - 0x30;
+                /*else if( szDec[i] <= 'f' && szDec[i] >= 'a' )
+                        nValue += szDec[i] - 87;*/
+                else
+                {
+					assert(false);
+                        cout << szDec << " is not a valid number!\n";
                         exit(1);
                 }
         }
