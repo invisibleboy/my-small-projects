@@ -17,6 +17,7 @@
 #include <stdio.h>
 #include <errno.h>
 #include <string.h>
+#include <assert.h>
 #include "dwarf.h"
 #include "libdwarf.h"
 
@@ -31,8 +32,10 @@ struct srcfilesdata {
 };
 
 int Error(int res, const char *szInfo, bool bWarn);
-int printIndent(int);
+int printIndent(char c, int nTab);
 bool IsGoodTag( Dwarf_Half tag);
+Dwarf_Unsigned BlockValue(Dwarf_Block *block, Dwarf_Half form);
+
 static void read_cu_list(Dwarf_Debug dbg);
 static void print_die_data(Dwarf_Debug dbg, Dwarf_Die print_me,int level,
    struct srcfilesdata *sf);
@@ -188,127 +191,6 @@ DepthFirst(Dwarf_Debug dbg, Dwarf_Die in_die,int in_level,
     }
     return;
 }
-static void
-get_addr(Dwarf_Attribute attr,Dwarf_Addr *val)
-{
-    Dwarf_Error error = 0;
-    int res;
-    Dwarf_Addr uval = 0;
-    res = dwarf_formaddr(attr,&uval,&error);
-    if(res == DW_DLV_OK) {
-        *val = uval;
-        return;
-    }
-    return;
-}
-static void
-get_number(Dwarf_Attribute attr,Dwarf_Unsigned *val)
-{
-    Dwarf_Error error = 0;
-    int res;
-    Dwarf_Signed sval = 0;
-    Dwarf_Unsigned uval = 0;
-    res = dwarf_formudata(attr,&uval,&error);
-    if(res == DW_DLV_OK) {
-        *val = uval;
-        return;
-    }
-    res = dwarf_formsdata(attr,&sval,&error);
-    if(res == DW_DLV_OK) {
-        *val = sval;
-        return;
-    }
-    return;
-}
-static void
-print_subprog(Dwarf_Debug dbg,Dwarf_Die die, int level,
-    struct srcfilesdata *sf)
-{
-    int res;
-    Dwarf_Error error = 0;
-    Dwarf_Attribute *attrbuf = 0;
-    Dwarf_Addr lowpc = 0;
-    Dwarf_Addr highpc = 0;
-    Dwarf_Signed attrcount = 0;
-    Dwarf_Unsigned i;
-    Dwarf_Unsigned filenum = 0;
-    Dwarf_Unsigned linenum = 0;
-    char *filename = 0;
-    res = dwarf_attrlist(die,&attrbuf,&attrcount,&error);
-    if(res != DW_DLV_OK) {
-        return;
-    }
-    for(i = 0; i < attrcount ; ++i) {
-        Dwarf_Half aform;
-        res = dwarf_whatattr(attrbuf[i],&aform,&error);
-        if(res == DW_DLV_OK) {
-            if(aform == DW_AT_decl_file) {
-                get_number(attrbuf[i],&filenum);
-                if((filenum > 0) && (sf->srcfilescount > (filenum-1))) {
-                    filename = sf->srcfiles[filenum-1];
-                }
-            }
-            if(aform == DW_AT_decl_line) {
-                get_number(attrbuf[i],&linenum);
-            }
-            if(aform == DW_AT_low_pc) {
-                get_addr(attrbuf[i],&lowpc);
-            }
-            if(aform == DW_AT_high_pc) {
-                get_addr(attrbuf[i],&highpc);
-            }
-        }
-        dwarf_dealloc(dbg,attrbuf[i],DW_DLA_ATTR);
-    }
-    if(filenum || linenum) {
-        printf("<%3d> file: %" DW_PR_DUu " %s  line %"
-            DW_PR_DUu "\n",level,filenum,filename?filename:"",linenum);
-    }
-    if(lowpc) {
-        printf("<%3d> low_pc : 0x%" DW_PR_DUx  "\n",
-            level, (Dwarf_Unsigned)lowpc);
-    }
-    if(highpc) {
-        printf("<%3d> high_pc: 0x%" DW_PR_DUx  "\n",
-            level, (Dwarf_Unsigned)highpc);
-    }
-    dwarf_dealloc(dbg,attrbuf,DW_DLA_LIST);
-}
-
-static void
-print_comp_dir(Dwarf_Debug dbg,Dwarf_Die die,int level, struct srcfilesdata *sf)
-{
-    int res;
-    Dwarf_Error error = 0;
-    Dwarf_Attribute *attrbuf = 0;
-    Dwarf_Signed attrcount = 0;
-    Dwarf_Unsigned i;
-    res = dwarf_attrlist(die,&attrbuf,&attrcount,&error);
-    if(res != DW_DLV_OK) {
-        return;
-    }
-    sf->srcfilesres = dwarf_srcfiles(die,&sf->srcfiles,&sf->srcfilescount, 
-        &error);
-    for(i = 0; i < attrcount ; ++i) {
-        Dwarf_Half aform;
-        res = dwarf_whatattr(attrbuf[i],&aform,&error);
-        if(res == DW_DLV_OK) {
-            if(aform == DW_AT_comp_dir) {
-                char *name = 0;
-                res = dwarf_formstring(attrbuf[i],&name,&error);
-                if(res == DW_DLV_OK) {
-                    printf(    "<%3d> compilation directory : \"%s\"\n",
-                        level,name);
-                }
-            }
-            if(aform == DW_AT_stmt_list) {
-                /* Offset of stmt list for this CU in .debug_line */
-            }
-        }
-        dwarf_dealloc(dbg,attrbuf[i],DW_DLA_ATTR);
-    }
-    dwarf_dealloc(dbg,attrbuf,DW_DLA_LIST);
-}
 
 static void
 resetsrcfiles(Dwarf_Debug dbg,struct srcfilesdata *sf)
@@ -332,6 +214,9 @@ print_die_data(Dwarf_Debug dbg, Dwarf_Die print_me,int level,
     Dwarf_Half tag = 0;
     const char *tagname = 0;
     int localname = 0;
+	bool bDeclared;
+	Dwarf_Bool bAttr;
+	Dwarf_Attribute attr;
 
     int res = dwarf_diename(print_me,&name,&error);
     Error(res, "SEARCH die name", true); 
@@ -345,23 +230,27 @@ print_die_data(Dwarf_Debug dbg, Dwarf_Die print_me,int level,
 
     res = dwarf_get_TAG_name(tag,&tagname);
 	Error(res, "SEARCHIGN die tag name", false);
+
+	res = dwarf_hasattr( print_me, DW_AT_declaration, &bAttr, &error);
+	Error(res, "SEARCHING declaration attribute1", true);	
+	if( res == DW_DLV_OK && bAttr == true)
+	{
+		res = dwarf_attr(print_me, DW_AT_declaration, &attr, &error);
+		Error(res, "SEARCHING declaration attribute2", false);
+		res = dwarf_formflag( attr, &bDeclared, &error );
+		Error(res, "SEARCHIGN declaration attribute3", false);
+		if( bDeclared )
+			return;
+	}
+
 	
 	{
-		printIndent(level);
-		printf("<%d> tag: %d %s  name: \"%s\"\n",level,tag,tagname,name);	
+		printIndent('-', level);
+		printf("<%d> tag: %d %s  name: \"%s\"",level,tag,tagname,name);	
 		if( tag == DW_TAG_variable )
 		{
-			// If external or local variable
-			Dwarf_Bool bAttr;
-			Dwarf_Bool bForm;		
-			enum Dwarf_Form_Class dfc;	
-			Dwarf_Attribute attr;
-			Dwarf_Half form;
-			bool bExternal = false;
-
-			Dwarf_Unsigned constLoc;
-			Dwarf_Block *blockLoc;
-			
+			// If external or local variable	
+			bool bExternal = false;					
 			
 			res = dwarf_hasattr( print_me, DW_AT_external, &bAttr, &error);
 			Error(res, "SEARCHING external attribute1", true);
@@ -369,42 +258,57 @@ print_die_data(Dwarf_Debug dbg, Dwarf_Die print_me,int level,
 			if( res == DW_DLV_OK && bAttr == true)
 			{
 				res = dwarf_attr(print_me, DW_AT_external, &attr, &error);
-				Error(res, "SEARCHING external attribute2", true);
+				Error(res, "SEARCHING external attribute2", false);
 				res = dwarf_formflag(attr, &bExternal, &error);
-				Error(res, "SEARCHING external attribute3", true);
+				Error(res, "SEARCHING external attribute3", false);
 			}
 			
 			if( bExternal )
+				; // skip global variables
+			//else
 			{
 				res = dwarf_hasattr( print_me, DW_AT_location, &bAttr, &error);
 				Error(res, "SEARCHING location attribute1", true);
 				if( res == DW_DLV_OK && bAttr == true)
 				{
+					Dwarf_Signed nLenth;
+					Dwarf_Locdesc **llbuf;
+					Dwarf_Signed offset;					
+	
 					res = dwarf_attr(print_me, DW_AT_location, &attr, &error);
 					Error(res, "SEARCHING location attribute2", true);
-					res = dwarf_whatform( attr, &form, &error);
-					Error(res, "JUDGING form of attribute", true);
-					
-					dfc = dwarf_get_form_class( 2, DW_AT_location, 4, form );
-					if( dfc == DW_FORM_CLASS_CONSTANT )
-					{
-						res = dwarf_formudata( attr, &constLoc, &error );
-						Error(res, "SEARCHING location of constant value", false );
-						printf("++++++location:\t%llu\n", constLoc);
-												
-					}
-					else if( dfc == DW_FORM_CLASS_BLOCK )
-					{
-						res = dwarf_formblock( attr, &blockLoc, &error );
-						Error(res, "SEARCHING location of block value", false );
-						
-						
-					}
-				}
 				
+					// There is a unified way to get the location of symbols
+					res = dwarf_loclist_n(attr, &llbuf, &nLenth, &error);
+					Error(res, "PARSER location list", false);
+			
+					assert(nLenth == 1);
+					Dwarf_Locdesc *locdesc = llbuf[0];
+					assert(locdesc->ld_cents == 1 );
+					Dwarf_Loc *loc = locdesc->ld_s;
+					if( loc->lr_atom == DW_OP_fbreg )
+					{
+						offset = _dwarf_decode_s_leb128( (unsigned char *)(&loc->lr_number), NULL );
+						printIndent(' ', level);
+						printf("@@location:\tesp[%d]\n", (int)offset );
+					}
+					else if( loc->lr_atom == DW_OP_addr )
+					{
+						offset = loc->lr_number;
+						printIndent(' ', level);
+						printf("@@location:\t0x%x\n", (int)offset );
+					}
+					else
+						printf("\n****%d is not DW_OP_fbreg\n", loc->lr_atom);				
+					
+				}
+				else
+					printf("\n****No location attribute\n");				
 			}
 			
 		}
+		else 
+			printf("\n");
 	}
 
     if(!localname) {
@@ -429,11 +333,12 @@ int Error(int res, const char *szInfo, bool bWarn)
 	return 0;
 }
 
-int printIndent(int nTab)
+int printIndent(char c, int nTab)
 {
-	int i = 0;
+	int i = 0, j;
 	for(; i < nTab; ++ i)
-		printf("---");
+		for(j =0 ; j < 3; ++ j)
+			printf("%c", c);
 	return 0;
 }
 
@@ -448,5 +353,18 @@ bool IsGoodTag(Dwarf_Half tag)
 		tag == DW_TAG_typedef)
 		return false;
 	return true;
+}
+
+Dwarf_Unsigned BlockValue(Dwarf_Block *block, Dwarf_Half form)
+{
+	Dwarf_Unsigned value;
+	char *p = block->bl_data;
+
+	if( form == DW_FORM_block1 )
+	{		
+		++ p;
+		value = *((unsigned int *)p);		
+	}
+	return value;
 }
 
