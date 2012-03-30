@@ -31,10 +31,15 @@ struct srcfilesdata {
     int srcfilesres;
 };
 
+FILE *g_outFile;
+const char *g_curFunc;
+
 int Error(int res, const char *szInfo, bool bWarn);
 int printIndent(char c, int nTab);
 bool IsGoodTag( Dwarf_Half tag);
 Dwarf_Unsigned BlockValue(Dwarf_Block *block, Dwarf_Half form);
+int dump(const char *varName, int addr, bool bGlobal, unsigned int nSize );
+
 
 static void read_cu_list(Dwarf_Debug dbg);
 static void print_die_data(Dwarf_Debug dbg, Dwarf_Die print_me,int level,
@@ -56,6 +61,7 @@ main(int argc, char **argv)
     Dwarf_Error error;
     Dwarf_Handler errhand = 0;
     Dwarf_Ptr errarg = 0;
+	char szOutFile[128];
 
     if(argc < 2) {
         fd = 0; /* stdin */
@@ -83,7 +89,15 @@ main(int argc, char **argv)
         exit(1);
     }
 
+	
+	// main work
+	strncpy(szOutFile, filepath, 127);
+	strcat(szOutFile, ".symbol");
+	g_outFile = fopen(szOutFile, "w+");
+	fprintf(g_outFile, "#Demangled name\t\t#Address\t#Size\n\n");
     read_cu_list(dbg);
+	fclose(g_outFile);
+
 	//finalize
     res = dwarf_finish(dbg,&error);
     if(res != DW_DLV_OK) {
@@ -218,19 +232,24 @@ print_die_data(Dwarf_Debug dbg, Dwarf_Die print_me,int level,
 	Dwarf_Bool bAttr;
 	Dwarf_Attribute attr;
 
-    int res = dwarf_diename(print_me,&name,&error);
+    int res = dwarf_tag(print_me,&tag,&error);
+	Error(res, "SEARCHING die tag", false);
+	if( tag == DW_TAG_lexical_block || tag == DW_TAG_compile_unit)
+		return;	
+
+    res = dwarf_get_TAG_name(tag,&tagname);
+	Error(res, "SEARCHIGN die tag name", false);	
+
+	res = dwarf_diename(print_me,&name,&error);
     Error(res, "SEARCH die name", true); 
     if(res == DW_DLV_NO_ENTRY) {
         name = "<no DW_AT_name attr>";
         localname = 1;
     }
+	if( tag == DW_TAG_subprogram )
+		g_curFunc = name;
 
-    res = dwarf_tag(print_me,&tag,&error);
-	Error(res, "SEARCHING die tag", false);
-
-    res = dwarf_get_TAG_name(tag,&tagname);
-	Error(res, "SEARCHIGN die tag name", false);
-
+	// skip decalared but not defined objects
 	res = dwarf_hasattr( print_me, DW_AT_declaration, &bAttr, &error);
 	Error(res, "SEARCHING declaration attribute1", true);	
 	if( res == DW_DLV_OK && bAttr == true)
@@ -243,7 +262,8 @@ print_die_data(Dwarf_Debug dbg, Dwarf_Die print_me,int level,
 			return;
 	}
 
-	
+		
+
 	{
 		printIndent('-', level);
 		printf("<%d> tag: %d %s  name: \"%s\"",level,tag,tagname,name);	
@@ -290,14 +310,23 @@ print_die_data(Dwarf_Debug dbg, Dwarf_Die print_me,int level,
 					{
 						offset = _dwarf_decode_s_leb128( (unsigned char *)(&loc->lr_number), NULL );
 						printIndent(' ', level);
-						printf("@@location:\tesp[%d]\n", (int)offset );
+						printf(":\tesb[%d] @@location\n", (int)offset );
+						dump(name, offset, false, 0);
+					}
+					else if( loc->lr_atom == DW_OP_breg5 )
+					{
+						offset = _dwarf_decode_s_leb128( (unsigned char *)(&loc->lr_number), NULL );
+						printIndent(' ', level);
+						printf(":\tebp[%d] @@location\n", (int)offset );
+						dump(name, offset, false, 0);
 					}
 					else if( loc->lr_atom == DW_OP_addr )
 					{
 						offset = loc->lr_number;
 						printIndent(' ', level);
-						printf("@@location:\t0x%x\n", (int)offset );
-					}
+						printf(":\t0x%x @@location\n", (int)offset );
+						dump(name, offset, true, 0);
+					}					
 					else
 						printf("\n****%d is not DW_OP_fbreg\n", loc->lr_atom);				
 					
@@ -333,10 +362,20 @@ int Error(int res, const char *szInfo, bool bWarn)
 	return 0;
 }
 
+int dump(const char *varName, int addr, bool bGlobal, unsigned int nSize )
+{
+	nSize = 0;
+	if( bGlobal )
+		fprintf(g_outFile, "%s\t\t%x\t%u\n", varName, addr, nSize );
+	else
+		fprintf(g_outFile, "%s::%s\t\t%d\t%u\n", g_curFunc, varName, addr, nSize );
+	return 0;
+}
+
 int printIndent(char c, int nTab)
 {
 	int i = 0, j;
-	for(; i < nTab; ++ i)
+	for(; i < nTab-1; ++ i)
 		for(j =0 ; j < 3; ++ j)
 			printf("%c", c);
 	return 0;
@@ -350,7 +389,9 @@ bool IsGoodTag(Dwarf_Half tag)
 		tag == DW_TAG_const_type ||
 		tag == DW_TAG_array_type ||
 		tag == DW_TAG_structure_type || 
-		tag == DW_TAG_typedef)
+		tag == DW_TAG_typedef ||
+		//tag == DW_TAG_lexical_block ||
+		tag == DW_TAG_formal_parameter)
 		return false;
 	return true;
 }
