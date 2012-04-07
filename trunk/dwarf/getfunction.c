@@ -32,11 +32,15 @@ struct srcfilesdata {
 };
 
 FILE *g_outFile;
+int g_counter = 0;
 const char *g_curFunc;
 
 int Error(int res, const char *szInfo, bool bWarn);
 int printIndent(char c, int nTab);
 bool IsGoodTag( Dwarf_Half tag);
+bool VerifiedUserFunc( Dwarf_Die die);
+
+
 Dwarf_Unsigned BlockValue(Dwarf_Block *block, Dwarf_Half form);
 int dump(const char *varName, int addr, bool bGlobal, unsigned int nSize );
 
@@ -49,6 +53,8 @@ static void DepthFirst(Dwarf_Debug dbg, Dwarf_Die in_die,int in_level,
 static void resetsrcfiles(Dwarf_Debug dbg,struct srcfilesdata *sf);
 
 static int namesoptionon = 0;
+
+static FILE *g_userFunc;
 
 int 
 main(int argc, char **argv)
@@ -82,6 +88,8 @@ main(int argc, char **argv)
     if(fd < 0) {
         printf("Failure attempting to open \"%s\"\n",filepath);
     }
+
+	g_userFunc = fopen("userfunc", "w+");
 	// initalize 
     res = dwarf_init(fd,DW_DLC_READ,errhand,errarg, &dbg,&error);
     if(res != DW_DLV_OK) {
@@ -97,6 +105,7 @@ main(int argc, char **argv)
 	fprintf(g_outFile, "#Demangled name\t\t#Address\t#Size\n\n");
     read_cu_list(dbg);
 	fclose(g_outFile);
+	fclose(g_userFunc);
 
 	//finalize
     res = dwarf_finish(dbg,&error);
@@ -176,9 +185,9 @@ DepthFirst(Dwarf_Debug dbg, Dwarf_Die in_die,int in_level,
 		// focus on dies of interested tags
 		res = dwarf_tag(cur_die, &tag,&error);
 		Error(res, "SEARCHING die tag", false);
-		if( IsGoodTag( tag ) )
+		if( tag == DW_TAG_compile_unit )
 		{
-			print_die_data(dbg,cur_die,in_level,sf);
+			//print_die_data(dbg,cur_die,in_level,sf);
 			res = dwarf_child(cur_die,&child,&error);
 			Error(res, "SEARCHING DFS of CU", true);  
 		
@@ -186,6 +195,11 @@ DepthFirst(Dwarf_Debug dbg, Dwarf_Die in_die,int in_level,
 		    if(res == DW_DLV_OK) {
 		        DepthFirst(dbg,child,in_level+1,sf);
 		    }
+		}
+		else if( tag == DW_TAG_subprogram )
+		{
+			if( VerifiedUserFunc( cur_die ) )
+				print_die_data(dbg, cur_die, in_level, sf);
 		}
         
 		// WFS
@@ -245,6 +259,7 @@ print_die_data(Dwarf_Debug dbg, Dwarf_Die print_me,int level,
     if(res == DW_DLV_NO_ENTRY) {
         name = "<no DW_AT_name attr>";
         localname = 1;
+	return;
     }
 	if( tag == DW_TAG_subprogram )
 		g_curFunc = name;
@@ -266,7 +281,8 @@ print_die_data(Dwarf_Debug dbg, Dwarf_Die print_me,int level,
 
 	{
 		printIndent('-', level);
-		printf("<%d> tag: %d %s  name: \"%s\"",level,tag,tagname,name);	
+		printf("<%d> tag: %d %s  name: \"%s\"",level,tag,tagname,name);
+		fprintf(g_userFunc, "%d\t%s\n", ++g_counter, name);	
 		if( tag == DW_TAG_variable )
 		{
 			// If external or local variable	
@@ -401,16 +417,38 @@ bool IsGoodTag(Dwarf_Half tag)
 	return true;
 }
 
-Dwarf_Unsigned BlockValue(Dwarf_Block *block, Dwarf_Half form)
-{
-	Dwarf_Unsigned value;
-	char *p = block->bl_data;
 
-	if( form == DW_FORM_block1 )
-	{		
-		++ p;
-		value = *((unsigned int *)p);		
+bool VerifiedUserFunc( Dwarf_Die cur_die)
+{
+	// declared, artificial, inlined
+	bool bDeclared;
+	Dwarf_Error error;
+	Dwarf_Bool bAttr;
+	Dwarf_Attribute attr;
+	int res;
+	// skip decalared but not defined objects
+	res = dwarf_hasattr( cur_die, DW_AT_declaration, &bAttr, &error);
+	Error(res, "SEARCHING declaration attribute1", true);	
+	if( res == DW_DLV_OK && bAttr == true) // has declareation attribute
+	{
+		res = dwarf_attr(cur_die, DW_AT_declaration, &attr, &error);
+		Error(res, "SEARCHING declaration attribute2", false);
+		res = dwarf_formflag( attr, &bDeclared, &error );
+		Error(res, "SEARCHIGN declaration attribute3", false);
+		if( bDeclared )
+			return false;
 	}
-	return value;
+	res = dwarf_hasattr( cur_die, DW_AT_artificial, &bAttr, &error );  // has artificial attribute
+	Error(res, "SEARCHING artificial attribute1", true);
+	if( res == DW_DLV_OK && bAttr )
+	{
+		res = dwarf_attr(cur_die, DW_AT_artificial, &attr, &error);
+		Error(res, "SEARCHING DW_AT_artificial attribute2", false);
+		res = dwarf_formflag( attr, &bDeclared, &error );
+		Error(res, "SEARCHIGN DW_AT_artificial attribute3", false);
+		if( bDeclared )
+			return false;
+	}
+	return true;
 }
 
