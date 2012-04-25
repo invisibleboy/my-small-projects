@@ -9,10 +9,12 @@
 #include <iostream>
 #include <set>
 
-#define CACHE_LINE_SIZE 8
-#define CACHE_SIZE      (128)
+#define OFFSET (2<<15)
+
+#define CACHE_SET	128
+#define CACHE_LINE_SIZE 16
 #define CACHE_ASSOCIATIVITY 1
-#define CACHE_SET       (CACHE_SIZE/CACHE_LINE_SIZE/CACHE_ASSOCIATIVITY)
+#define CACHE_SIZE      (CACHE_SET*CACHE_LINE_SIZE*CACHE_ASSOCIATIVITY)
 
 using namespace std;
 
@@ -23,6 +25,7 @@ class CBasicBlock;
 //#define UPPER
 
 uint hex2dec(const string &szHex);
+uint dec2dec(const string &szDec);
 
 namespace CACHE
 {
