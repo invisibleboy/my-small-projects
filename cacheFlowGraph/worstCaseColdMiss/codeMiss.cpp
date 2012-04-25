@@ -52,11 +52,12 @@ ofstream g_outf;
 
 int main(int argc, const char * *argv)
 {
-		char szCacheSize[17], szBlockSize[17] ;
-		itoa(CACHE_SIZE, szCacheSize, 10);
-		itoa(CACHE_LINE_SIZE, szBlockSize, 10 );
+	char szAssoc[17], szBlockSize[17], szCacheSet[17];
+	itoa(CACHE_SET, szCacheSet, 10);		
+	itoa(CACHE_LINE_SIZE, szBlockSize, 10 );
+	itoa(CACHE_ASSOCIATIVITY, szAssoc, 10);
 
-        string szPath = "C:\\Users\\qali\\Downloads\\controllers\\";
+        string szPath = "C:\\Users\\qali\\develop\\controllers\\";
 		string szSequence;
 		for( int i = 1; i < argc; ++ i)
 			szSequence += argv[i];
@@ -64,13 +65,13 @@ int main(int argc, const char * *argv)
 
         CController *cons[3];
 		
-        cons[0] = new CController(szPath+"controller1" + "_" + szCacheSize + "_" + szBlockSize + ".gen");
-        cons[1] = new CController(szPath+"controller2" + "_" + szCacheSize + "_" + szBlockSize + ".gen");
-        cons[2] = new CController(szPath+"controller3" + "_" + szCacheSize + "_" + szBlockSize + ".gen");
+        cons[0] = new CController(szPath+"Controller1" + "_" + szCacheSet + "_" + szBlockSize + "_" + szAssoc  + ".gen");
+        cons[1] = new CController(szPath+"Controller2" + "_" + szCacheSet + "_" + szBlockSize + "_" + szAssoc  + ".gen");
+        cons[2] = new CController(szPath+"Controller3" + "_" + szCacheSet + "_" + szBlockSize + "_" + szAssoc  + ".gen");
         ParserInput(argc, argv);
 
 
-		string szOutFile = szPath + "controlSequence" + szSequence + "_" + szCacheSize + "_" + szBlockSize +".txt";
+		string szOutFile = szPath + "controlSequence" + szSequence + "_" + szCacheSet + "_" + szBlockSize + "_" + szAssoc +".txt";
         g_outf.open(szOutFile.c_str());
 
 #ifndef UPPER

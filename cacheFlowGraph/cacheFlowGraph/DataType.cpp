@@ -12,7 +12,7 @@ uint g_nEntryAddress;
 uint g_nExitAddress;
 
 
-//ex:
+//ex:   400140:	28 00 00 00 	lw $16,0($29)
 //004001f0 <rt_MatMultRR_Dbl> lw        $13,8($7)
 CInstruction::CInstruction(std::string &szCmd, int nBigOffset)
 {               
@@ -23,7 +23,7 @@ CInstruction::CInstruction(std::string &szCmd, int nBigOffset)
         string str;
 
         ss >> str;        
-        m_nAddr = hex2dec(str);
+		m_nAddr = hex2dec(str.substr(0,str.size()-1) );
         m_nAddr += nBigOffset;
         //m_nTag = m_nAddr/CACHE_LINE_SIZE;
 

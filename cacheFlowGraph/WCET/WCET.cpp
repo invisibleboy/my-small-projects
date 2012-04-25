@@ -7,7 +7,7 @@
 #include "../cacheFlowGraph/cacheflow.h"
 
 
-#define OFFSET 2048
+
 
 static std::map<uint, map<uint, CBasicBlock *> > g_hBlocks;
 
@@ -64,25 +64,37 @@ int ReadCode(const char *szFile, int nBigOffset)
                 continue;
         if( szLine.find("start_addr") == 0 || szLine.find("Disassembly") == 0 )
                 continue;
-		if( szLine.find("end_addr") == 0 )
+		if( szLine.find("...") != string::npos )
 			break;
 		// skip comment line for source file info
 		if( szLine.find(".c:") != string::npos)
 			continue;
+		if( szLine.find("format") != string::npos )
+			continue;
+		if( szLine.find("Disassembly") != string::npos )
+			continue;
         stringstream ss( szLine);
         string str1;
         ss >> str1;
-		//ex:
+		//ex: 00400140 <__start>:
 		//rt_MatMultRR_Dbl():
-        if( str1.find(':') != str1.npos )  // function or label line
+        if( str1.find(':') == str1.npos )  // function or label line
         {
-                                
-                string szFunc = str1;
-                szFunc = szFunc.substr(0, szFunc.size()-3);                     
-                pCurFunc = new CFunction(szFunc,-1); 
+			uint nAddr = hex2dec(str1);
+			nAddr += nBigOffset;
+            string szFunc;
+			ss >> szFunc;
+            szFunc = szFunc.substr(1, szFunc.size()-3);                     
+            pCurFunc = new CFunction(szFunc,nAddr); 
+			g_hFuncs[nAddr] = pCurFunc;
+
+			if( szFunc == "main" )
+				g_nEntryAddress = nAddr;
                 //g_hFuncs[nAddr] = pCurFunc;
         }
-        else                            // instruction line
+		// instruction line
+		// ex:   400140:	28 00 00 00 	lw $16,0($29)
+        else                            
         {
 			if( pCurFunc == NULL )
 				continue;
@@ -90,17 +102,10 @@ int ReadCode(const char *szFile, int nBigOffset)
             CInstruction *pInst = new CInstruction(szLine, nBigOffset);
             pCurFunc->m_Insts.push_back(pInst);
 			pInst->SetFunction( pCurFunc );
-            g_hInsts[pInst->GetAddr()] = pInst;
+            g_hInsts[pInst->GetAddr()] = pInst;	
 
-			if( pCurFunc->GetStart() == -1 )
-			{
-				pCurFunc->SetStart( pInst->GetAddr() );
-				g_hFuncs[pInst->GetAddr()] = pCurFunc;
-			}
-
-			if( szLine.find("<main>") != string::npos )
-				g_nEntryAddress = pInst->GetAddr();
-			if( szLine.find("<main") != string::npos )
+			
+			if( pCurFunc->GetName() == "main" )
 				g_nExitAddress = pInst->GetAddr();
         }
     }
@@ -150,7 +155,7 @@ int ReadCFG2(const char *szFile, int nBigOffset )
 			uint index2 = szLine.find(']');
 			string szProcNum = szLine.substr(index1+1, index2-index1-1);
 
-			nProcId = hex2dec(szProcNum);
+			nProcId = dec2dec(szProcNum);
 		}
 		//ex:
 		// 0 : 00400328 : [  1 ,   ]  P0
@@ -164,7 +169,7 @@ int ReadCFG2(const char *szFile, int nBigOffset )
 			string str;
 
 			ss >> str;
-			nBlockId = hex2dec( str);
+			nBlockId = dec2dec( str);
 			CBasicBlock *pBlock = g_hBlocks[nProcId][nBlockId];
 
 
@@ -206,9 +211,10 @@ int ReadCFG2(const char *szFile, int nBigOffset )
 		for(; cur_p != pCurFunc->m_Insts.end(); ++ cur_p )
 		{
 			CInstruction *pInst = *cur_p;
-			pCurBlock->m_Insts.push_back( pInst );
-			g_pExitBlock = pCurBlock;
+			pCurBlock->m_Insts.push_back( pInst );			
 		}
+		if( pCurFunc->GetName() == "main" )
+			g_pExitBlock = pCurBlock;
 	}
 
 
@@ -238,13 +244,13 @@ int ReadCFG1( const char *szFile, int nBigOffset )
 
 		uint index1 = str.find('(');
 		string szBlockId = str.substr(0,index1);
-		uint nGBlockId = hex2dec(szBlockId);
+		uint nGBlockId = dec2dec(szBlockId);
 		uint index2 = str.find('.');
 		string szProcId = str.substr(index1+1, index2-index1-1);
-		uint nProcId = hex2dec(szProcId);
+		uint nProcId = dec2dec(szProcId);
 		index1 = str.find(')');
 		szBlockId = str.substr(index2+1, index1-index2-1);
-		uint nBlockId = hex2dec(szBlockId);
+		uint nBlockId = dec2dec(szBlockId);
 	
 		CBasicBlock *pBlock = new CBasicBlock( 0, nGBlockId);
 		g_hBlocks[nProcId][nBlockId] = pBlock;
@@ -257,7 +263,7 @@ int ReadCFG1( const char *szFile, int nBigOffset )
 		ss >> str;
 		while( str != "]" )
 		{
-			uint nSucc = hex2dec(str);
+			uint nSucc = dec2dec(str);
 			hSuccs[nGBlockId].insert( nSucc );
 			ss >> str;
 		}
@@ -285,11 +291,12 @@ int ReadCFG1( const char *szFile, int nBigOffset )
 
 int SetOutFile(string szInFile)
 {
-	char szCacheSize[17], szBlockSize[17] ;
-		itoa(CACHE_SIZE, szCacheSize, 10);
-		itoa(CACHE_LINE_SIZE, szBlockSize, 10 );
+	char szAssoc[17], szBlockSize[17], szCacheSet[17];
+	itoa(CACHE_SET, szCacheSet, 10);		
+	itoa(CACHE_LINE_SIZE, szBlockSize, 10 );
+	itoa(CACHE_ASSOCIATIVITY, szAssoc, 10);
 
-	szInFile = szInFile + "_" + szCacheSize + "_" + szBlockSize;
+	szInFile = szInFile + "_" + szCacheSet + "_" + szBlockSize + "_" + szAssoc;
 
         /*string szOutFile = szInFile + ".rcs";
         g_RcsFile.open(szOutFile.c_str());
