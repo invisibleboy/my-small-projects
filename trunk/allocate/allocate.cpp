@@ -1,3 +1,5 @@
+// allocation for refresh minimization in volatile stt-ram cache
+
 #include "allocate.h"
 #include <string>
 #include <sstream>
