@@ -6,8 +6,7 @@
 #include "DataType.h"
 #include "FlowVal.h"
 
-
-extern ofstream g_RcsFile, g_LcsFile, g_GenFile;
+extern ofstream g_RcsFile, g_LcsFile, g_GenFile, g_DotFile;
 class CCallSite
 {
 public:
@@ -18,7 +17,6 @@ public:
         CBasicBlock *m_pBlock;
 
         map<CBasicBlock *, vector<int> >  m_InRcsB, m_OutRcsB;
-
 };
 
 class CCacheFlow
@@ -43,6 +41,9 @@ private:
 		int ControlFlow();
         int TopoSort();
         //int GenAndCallsite();
+		int Dominator();
+		int PosDominator();
+
         int RcsAnalysis(CFunction *pFunc, vector<int> &Rcs);
         int LcsAnalysis(CFunction *pFunc, vector<int> &Lcs);
         int Write(ostream &os, const vector<int> &flow);
@@ -54,7 +55,7 @@ private:
 
 		CFunction *ConstructFunction( CFunction *pOriFunc, uint nStart );
 		int RemoveUnreached( CFunction *pFunction );
-		int Graphviz();
+		int Graphviz(ostream &os);
 
 private:
         list<CFunction *> m_WorkList;

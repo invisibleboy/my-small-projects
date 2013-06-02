@@ -20,11 +20,12 @@ public:
 
 		CFlowVal *m_PosGenRcs;
 		CFlowVal *m_PosGenLcs;
+		string m_szFile;
 
 private:
         int Read();
 		int PosRead();
-        string m_szFile;
+        
         
 };
 

@@ -3,9 +3,9 @@
 #include <sstream>
 #include <assert.h>
 #include "cacheFlow.h"
+#include "FlowVal.h"
 
-ofstream g_RcsFile, g_LcsFile, g_GenFile;
-
+ofstream g_RcsFile, g_LcsFile, g_GenFile, g_DotFile;
 int CCacheFlow::Run()
 {
 	//ControlFlow();
@@ -15,7 +15,9 @@ int CCacheFlow::Run()
     for(; f_p != f_e; ++ f_p )
     {
         CFunction *pFunc = *f_p;*/
-	Graphviz();
+	Graphviz(g_DotFile);
+	Dominator();
+	PosDominator();
 #ifndef UPPER
 		vector<int> Rcs, Lcs;
         RcsAnalysis( NULL, Rcs );
@@ -184,13 +186,11 @@ int CCacheFlow::RcsAnalysis(CFunction *pFunc, vector<int> &Rcs)
 
     // 2. cache flow analysis               
     bool bChange = true;
-    bool bFirst = true;
-    while( bChange || bFirst )
+    uint nCount = 0;
+    while( bChange  )
     {
-        if( bFirst )
-                bFirst = false;
-        else
-                bChange = false;
+		++ nCount;
+        bChange = false;
         b_p = g_Blocks.begin();
         for(; b_p != b_e; ++ b_p )
         {
@@ -198,19 +198,47 @@ int CCacheFlow::RcsAnalysis(CFunction *pFunc, vector<int> &Rcs)
             vector<int> &GenRcsB = GenRcs[bb];
             vector<int> &InRcsB = InRcs[bb];
             vector<int> &OutRcsB = OutRcs[bb];
-            // InRcsB := unify all preceding blocks' OutRcsB
-            vector<int> tmpOut(CACHE_SET, CACHE::BOTTOM);
-            list<CBasicBlock *>::iterator pred_p = bb->m_Preds.begin(), pred_e = bb->m_Preds.end();
-            for( ; pred_p != pred_e; ++ pred_p )
-            {
-                CBasicBlock *pPred = *pred_p;
-                vector<int> &OutPredB = OutRcs[pPred];
-				if( pred_p == bb->m_Preds.begin() )
-					CopyCS( OutPredB, tmpOut, CACHE_SET );
-				else
-					UnifyCS( OutPredB, tmpOut, tmpOut, CACHE_SET );
-            }
+	
+			vector<int> tmpOut(CACHE_SET, CACHE::BOTTOM);
+			// with loop optimization: dom U preds ==> dom * (BOTTOM U preds)
+			CBasicBlock *domBlock = NULL;
+			if( bb->m_Preds.size() > 1 )
+			{
+				list<CBasicBlock *>::iterator pred_p = bb->m_Preds.begin(), pred_e = bb->m_Preds.end();
+				for( ; pred_p != pred_e; ++ pred_p )
+				{
+					CBasicBlock *b1 = *pred_p;
+					if( bb != b1 && bb->m_Doms->Value(b1->GetId()) )
+					{
+						vector<int> &OutPredB = OutRcs[b1];
+						CopyCS( OutPredB, tmpOut, CACHE_SET );
+						domBlock = b1;
+						break;
+					}
+				}
 
+			}
+			//else
+			{
+				// InRcsB := unify all preceding blocks' OutRcsB	   
+				vector<int> tmpOut1(CACHE_SET, CACHE::BOTTOM);
+				list<CBasicBlock *>::iterator pred_p = bb->m_Preds.begin(), pred_e = bb->m_Preds.end();
+				for( ; pred_p != pred_e; ++ pred_p )
+				{
+					CBasicBlock *pPred = *pred_p;
+					vector<int> OutPredB;
+					if( domBlock == pPred )
+						OutPredB.assign(CACHE_SET, CACHE::BOTTOM);
+					else
+						OutPredB.assign(OutRcs[pPred].begin(), OutRcs[pPred].end());
+					if( pred_p == bb->m_Preds.begin() )
+						CopyCS( OutPredB, tmpOut1, CACHE_SET );
+					else
+						UnifyCS( OutPredB, tmpOut1, tmpOut1, CACHE_SET );
+				}
+				MergeCS(tmpOut, tmpOut1, tmpOut, CACHE_SET);
+			}
+			
             int nDiff = CopyCS( tmpOut, InRcsB, CACHE_SET );
             if( nDiff == 1 )
                     bChange = true;
@@ -254,40 +282,65 @@ int CCacheFlow::LcsAnalysis(CFunction *pFunc, vector<int> &Lcs)
 
         // 2. cache flow analysis               
         bool bChange = true;
-        bool bFirst = true;
-        while( bChange || bFirst )
+		uint nCount = 0;
+        while( bChange || nCount < 2 )
         {
-                if( bFirst )
-                        bFirst = false;
-                else
-                        bChange = false;
-				b_p = g_Blocks.begin();
-                for(; b_p != b_e; ++ b_p )
+			++ nCount;
+			bChange = false;
+			b_p = g_Blocks.begin();
+            for(; b_p != b_e; ++ b_p )
+            {
+                CBasicBlock *bb = *b_p;
+                vector<int> &GenLcsB = GenLcs[bb];
+                vector<int> &InLcsB = InLcs[bb];
+                vector<int> &OutLcsB = OutLcs[bb];
+				
+				// With loop optimization: posDom U succs ==> (BOTTOM U succs) * posDom
+				vector<int> tmpIn(CACHE_SET, CACHE::BOTTOM);
+				CBasicBlock *posDomBlock = NULL;
+				if( bb->m_Succs.size() > 1 )
+				{
+					list<CBasicBlock *>::iterator succ_p = bb->m_Succs.begin(), succ_e = bb->m_Succs.end();
+					for( ; succ_p != succ_e; ++ succ_p )
+					{
+						CBasicBlock *b1 = *succ_p;
+						if( bb != b1 && bb->m_PosDoms->Value(b1->GetId()) )
+						{
+							vector<int> &InSuccB = InLcs[b1];
+							CopyCS(InSuccB, tmpIn, CACHE_SET);
+							posDomBlock = b1;
+							break;
+						}
+					}
+				}
+				
+                // OutLcsB := unify all succeding blocks' InLcsB
+                vector<int> tmpIn1(CACHE_SET, CACHE::BOTTOM);
+                list<CBasicBlock *>::iterator succ_p = bb->m_Succs.begin(), succ_e = bb->m_Succs.end();
+                for( ; succ_p != succ_e; ++ succ_p )
                 {
-                        CBasicBlock *bb = *b_p;
-                        vector<int> &GenLcsB = GenLcs[bb];
-                        vector<int> &InLcsB = InLcs[bb];
-                        vector<int> &OutLcsB = OutLcs[bb];
-                        // OutLcsB := unify all succeding blocks' InLcsB
-                        vector<int> tmpIn(CACHE_SET, CACHE::BOTTOM);
-                        list<CBasicBlock *>::iterator succ_p = bb->m_Succs.begin(), succ_e = bb->m_Succs.end();
-                        for( ; succ_p != succ_e; ++ succ_p )
-                        {
-                            CBasicBlock *pSucc = *succ_p;
-                            vector<int> &InSuccB = InLcs[pSucc];
-							if( succ_p == bb->m_Succs.begin() )
-								CopyCS( InSuccB, tmpIn, CACHE_SET );
-							else
-								UnifyCS( InSuccB, tmpIn, tmpIn, CACHE_SET );
-                        }
+                    CBasicBlock *pSucc = *succ_p;
+                    vector<int> InSuccB;
+					if( posDomBlock == pSucc )
+						InSuccB.assign(CACHE_SET, CACHE::BOTTOM);
+					else
+						InSuccB.assign(InLcs[pSucc].begin(), InLcs[pSucc].end());
 
-                        int nDiff = CopyCS( tmpIn, OutLcsB, CACHE_SET );
-                        if( nDiff == 1 )
-                                bChange = true;
-
-                        // InLcsB := InLcsB + GenLcsB
-                        MergeCS(OutLcsB,GenLcsB,InLcsB, CACHE_SET);
+					if( succ_p == bb->m_Succs.begin() )
+						CopyCS( InSuccB, tmpIn1, CACHE_SET );
+					else
+						UnifyCS( InSuccB, tmpIn1, tmpIn1, CACHE_SET );
                 }
+
+				MergeCS(tmpIn, tmpIn1, tmpIn, CACHE_SET);
+
+                int nDiff = CopyCS( tmpIn, OutLcsB, CACHE_SET );
+                if( nDiff == 1 )
+					bChange = true;
+
+                // InLcsB := InLcsB + GenLcsB
+                MergeCS(OutLcsB,GenLcsB,InLcsB, CACHE_SET);
+            }
         }
         // 3. record current function's GenLcsP
        
@@ -553,6 +606,141 @@ int CCacheFlow::RemoveUnreached( CFunction *pFunction )
 	return 0;
 }
 
+
+int CCacheFlow::Dominator()
+{
+	bool bChanged = true;
+	map<uint, CSimpleFlowVal *> InValue;
+
+
+	// 1. boundary and initializer
+	list<CBasicBlock *>::iterator b_p = g_Blocks.begin(), b_e = g_Blocks.end();
+	for(; b_p != b_e; ++ b_p )
+	{
+		CBasicBlock *bb = *b_p;
+		InValue[bb->GetId()] = new CSimpleFlowVal(g_Blocks.size());
+		if( bb == g_pEntryBlock )
+		{
+			bb->m_Doms = new CSimpleFlowVal(g_Blocks.size(), false);
+			bb->m_Doms->Set(bb->GetId(), true);
+		}
+		else
+			bb->m_Doms = new CSimpleFlowVal(g_Blocks.size());
+		
+	}
+
+	while(bChanged)
+	{
+		bChanged = false;
+		b_p = g_Blocks.begin();
+		for(; b_p != b_e; ++ b_p )
+		{
+			CBasicBlock *bb = *b_p;
+
+			// 1. meet operator
+			CSimpleFlowVal tmp(g_Blocks.size(),false);
+			list<CBasicBlock *>::iterator pred_p = bb->m_Preds.begin(), pred_e = bb->m_Preds.end();
+			for(; pred_p != pred_e; ++ pred_p )
+			{
+				CBasicBlock *b1 = *pred_p;
+				if( pred_p == bb->m_Preds.begin() )
+					tmp.Assign( *(b1->m_Doms) );
+				else
+					tmp.Meet( *(b1->m_Doms) );
+			}
+			
+			// test if the flowvalue changes
+			CSimpleFlowVal &_in = *InValue[bb->GetId()];
+			if( !(tmp == _in) )
+			{
+				bChanged = true;
+				_in.Assign(tmp);
+			}
+
+			// 2. transfer function
+			bb->m_Doms->Assign(_in);
+			bb->m_Doms->Set(bb->GetId(), true);
+		}
+	}
+	
+	// release the heap space for InValue
+	b_p = g_Blocks.begin();
+	for(; b_p != b_e; ++ b_p )
+	{
+		CBasicBlock *bb = *b_p;
+		delete InValue[bb->GetId()];
+	}
+
+	return 0;
+}
+
+int CCacheFlow::PosDominator()
+{
+	bool bChanged = true;
+	map<uint, CSimpleFlowVal *> InValue;
+
+
+	// 1. boundary and initializer
+	list<CBasicBlock *>::iterator b_p = g_Blocks.begin(), b_e = g_Blocks.end();
+	for(; b_p != b_e; ++ b_p )
+	{
+		CBasicBlock *bb = *b_p;
+		InValue[bb->GetId()] = new CSimpleFlowVal(g_Blocks.size());
+		if( bb == g_pExitBlock )
+		{
+			bb->m_PosDoms = new CSimpleFlowVal(g_Blocks.size(), false);
+			bb->m_PosDoms->Set(bb->GetId(), true);
+		}
+		else
+			bb->m_PosDoms = new CSimpleFlowVal(g_Blocks.size());
+		
+	}
+
+	while(bChanged)
+	{
+		bChanged = false;
+		b_p = g_Blocks.begin();
+		for(; b_p != b_e; ++ b_p )
+		{
+			CBasicBlock *bb = *b_p;
+
+			// 1. meet operator
+			CSimpleFlowVal tmp(g_Blocks.size(),false);
+			list<CBasicBlock *>::iterator pred_p = bb->m_Succs.begin(), pred_e = bb->m_Succs.end();
+			for(; pred_p != pred_e; ++ pred_p )
+			{
+				CBasicBlock *b1 = *pred_p;
+				if( pred_p == bb->m_Succs.begin() )
+					tmp.Assign( *(b1->m_PosDoms) );
+				else
+					tmp.Meet( *(b1->m_PosDoms) );
+			}
+			
+			// test if the flowvalue changes
+			CSimpleFlowVal &_in = *InValue[bb->GetId()];
+			if( !(tmp == _in) )
+			{
+				bChanged = true;
+				_in.Assign(tmp);
+			}
+
+			// 2. transfer function
+			bb->m_PosDoms->Assign(_in);
+			bb->m_PosDoms->Set(bb->GetId(), true);
+		}
+	}
+	
+	// release the heap space for InValue
+	b_p = g_Blocks.begin();
+	for(; b_p != b_e; ++ b_p )
+	{
+		CBasicBlock *bb = *b_p;
+		delete InValue[bb->GetId()];
+	}
+
+	return 0;
+}
+
 int CCacheFlow::Write(std::ostream &os, const std::vector<int> &flow)
 {
         for( int i = 0; i < CACHE_SET; ++ i )
@@ -565,12 +753,8 @@ int CCacheFlow::Write(std::ostream &os, const std::vector<int> &flow)
 }
 
 
-int CCacheFlow::Graphviz()
+int CCacheFlow::Graphviz(ostream &os)
 {    
-    string szFileName = "cfg.dot";
-    ofstream os;
-    os.open(szFileName.c_str());
-
     os << "digraph{" << endl;
 
 	// node
@@ -583,10 +767,10 @@ int CCacheFlow::Graphviz()
 		else
 			os << bb->GetStart() << "[label=\"" << "block " << bb->GetId() << "\\n";
         vector<CInstruction *>::iterator i_p = bb->m_Insts.begin(), i_e = bb->m_Insts.end();
-        for(; i_p != i_e; ++ i_p )
-        {
-            os << **i_p << "\\n";
-        }
+        //for(; i_p != i_e; ++ i_p )
+        //{
+        //    os << **i_p << "\\n";
+        //}
         os << "\", shape=box];" << endl;    
     }
 

@@ -177,3 +177,36 @@ ostream & operator << (ostream &os, CFlowVal &flow )
     }
     return os;
 }
+
+
+
+CSimpleFlowVal &CSimpleFlowVal::Meet(CSimpleFlowVal &sfv)
+{
+	for( uint i =0; i < m_nSize; ++ i )
+		_value[i] = _value[i] && sfv._value[i];
+	return *this;
+}
+
+CSimpleFlowVal &CSimpleFlowVal::Unify(CSimpleFlowVal &sfv)
+{
+	for( uint i =0; i < m_nSize; ++ i )
+		_value[i] = _value[i] || sfv._value[i];
+	return *this;
+}
+
+CSimpleFlowVal &CSimpleFlowVal::Assign(CSimpleFlowVal &sfv)
+{
+	for( uint i = 0; i < m_nSize; ++ i )
+		_value[i] = sfv._value[i];
+	return *this;
+}
+
+bool CSimpleFlowVal::operator == (CSimpleFlowVal &sfv)
+{
+	for( uint i = 0; i < m_nSize; ++ i )
+	{
+		if( _value[i] != sfv._value[i] )
+			return false;
+	}
+	return true;
+}

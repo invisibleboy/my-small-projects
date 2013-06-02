@@ -9,9 +9,10 @@
 #include <iostream>
 #include <set>
 
-#define OFFSET (2<<15)
+#define OFFSET (3000)
+#define START (0x4001f0)
 
-#define CACHE_SET	128
+#define CACHE_SET	(2<<6)
 #define CACHE_LINE_SIZE 16
 #define CACHE_ASSOCIATIVITY 1
 #define CACHE_SIZE      (CACHE_SET*CACHE_LINE_SIZE*CACHE_ASSOCIATIVITY)
@@ -21,7 +22,7 @@ using namespace std;
 typedef unsigned int uint;
 class CFunction;
 class CBasicBlock;
-
+class CSimpleFlowVal;
 //#define UPPER
 
 uint hex2dec(const string &szHex);
@@ -71,7 +72,7 @@ public:
         
         friend inline ostream & operator << (ostream &os, CInstruction &inst)
         {
-                os << inst.m_nAddr << ":\t" << inst.GetOpc();
+                os << inst.m_nAddr/CACHE_LINE_SIZE << ":\t" << inst.GetOpc();
                 return os;
         }
 
@@ -99,6 +100,8 @@ public:
         vector<CInstruction *> m_Insts;
         list<CBasicBlock *> m_Preds;
         list<CBasicBlock *> m_Succs;
+		CSimpleFlowVal *m_Doms;
+		CSimpleFlowVal *m_PosDoms;
 
 public:
         CBasicBlock(uint nStart) { m_nStart = nStart; m_bCall = false;m_bEntryCall = true; m_nTermType = CInstruction::ORDINARY;};
@@ -183,6 +186,7 @@ int CommonSet( const set<int> &s1, const set<int> &s2);
 
 uint hex2dec(const string &szHex);
 uint dec2dec(const string &szDec );
+uint TransAddress(uint oriAddr, uint offset);
 
 
 #endif
