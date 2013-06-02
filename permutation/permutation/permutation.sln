@@ -1,0 +1,26 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 10.00
+# Visual Studio 2008
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "permutation", "permutation.vcproj", "{0648F43E-6621-4BFE-B47A-BBE7944AA14D}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "fourColorPerm", "..\fourColorPerm\fourColorPerm.vcproj", "{9B244BB9-EECF-4ABF-A485-AC8EC2F2C456}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Win32 = Debug|Win32
+		Release|Win32 = Release|Win32
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{0648F43E-6621-4BFE-B47A-BBE7944AA14D}.Debug|Win32.ActiveCfg = Debug|Win32
+		{0648F43E-6621-4BFE-B47A-BBE7944AA14D}.Debug|Win32.Build.0 = Debug|Win32
+		{0648F43E-6621-4BFE-B47A-BBE7944AA14D}.Release|Win32.ActiveCfg = Release|Win32
+		{0648F43E-6621-4BFE-B47A-BBE7944AA14D}.Release|Win32.Build.0 = Release|Win32
+		{9B244BB9-EECF-4ABF-A485-AC8EC2F2C456}.Debug|Win32.ActiveCfg = Debug|Win32
+		{9B244BB9-EECF-4ABF-A485-AC8EC2F2C456}.Debug|Win32.Build.0 = Debug|Win32
+		{9B244BB9-EECF-4ABF-A485-AC8EC2F2C456}.Release|Win32.ActiveCfg = Release|Win32
+		{9B244BB9-EECF-4ABF-A485-AC8EC2F2C456}.Release|Win32.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
