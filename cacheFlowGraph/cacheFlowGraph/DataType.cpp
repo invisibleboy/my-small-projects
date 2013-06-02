@@ -24,7 +24,7 @@ CInstruction::CInstruction(std::string &szCmd, int nBigOffset)
 
         ss >> str;        
 		m_nAddr = hex2dec(str.substr(0,str.size()-1) );
-        m_nAddr += nBigOffset;
+        m_nAddr = TransAddress(m_nAddr, nBigOffset);
         //m_nTag = m_nAddr/CACHE_LINE_SIZE;
 
   //      ss >> str;
@@ -156,15 +156,49 @@ int CopyCS(vector<int> &source, vector<int> &target, uint n )
         return nDiff;
 }
 
+/*
+// X for "BOTTOM or tag", < for "BOTTOM", > for "TOP"
+	X1		<		tag		>
+X2	X2/>	X2		X2/>	>
+<	X1		<		tag		>
+tag	X1/tag	tag		tag		tag
+>	>		>		>		>
+*/
+
 int UnifyCS(vector<int> &first, vector<int> &second, vector<int> &target, uint n )
 {
     int nDiff = 0;
     for( uint i = 0; i < n; ++ i)
     {
-		if( first[i] != second[i] )       
+		if ( first[i] == second[i] )
+			target[i] = second[i];
+		 // tag or BOTTOM
+		else if( first[1] < CACHE::BOTTOM || second[i] < CACHE::BOTTOM )
+		{
+			uint tag1 = first[i];
+			uint tag2 = second[i];
+			if( first[i] < CACHE::BOTTOM )
+				tag1 = CACHE::BOTTOM - first[i];
+			else if( second[i] < CACHE::BOTTOM ) 
+				tag2 = CACHE::BOTTOM - second[i];
+
+			if( tag1 == CACHE::BOTTOM || tag2 == CACHE::BOTTOM || tag1 == tag2 )
+				target[i] = first[1] < CACHE::BOTTOM? first[i]: second[i];
+			else
+				target[i] = CACHE::TOP;
+		}
+		else if( first[i] == CACHE::TOP || second[i] == CACHE::TOP )   
 			target[i] = CACHE::TOP;
+		else if( first[i] == CACHE::BOTTOM && second[i] > CACHE::TOP
+			|| second[i] == CACHE::BOTTOM && first[i] > CACHE::TOP )
+		{
+			uint nTag = abs(first[i]) + abs(second[i]);
+			nTag = 0 - nTag;
+			target[i] = nTag;
+		}
 		else
-			target[i] = first[i];
+			target[i] = CACHE::TOP;
+			
     }
     return nDiff;
 }
@@ -177,7 +211,9 @@ int ColdMiss(const vector<int> &source, const vector<int> &target, vector<bool> 
         {
             if( target[i] != CACHE::BOTTOM )
             {
-                if( target[i] == CACHE::TOP || target[i] != source[i] )
+                if( target[i] == CACHE::TOP 
+					|| target[i] < CACHE::BOTTOM
+					|| target[i] != source[i] )
                         ++ num;
                 else
                 {
@@ -189,6 +225,14 @@ int ColdMiss(const vector<int> &source, const vector<int> &target, vector<bool> 
         return num;
 }
 
+/*
+// X for "BOTTOM or tag", < for "BOTTOM", > for "TOP"
+	X1		<	tag		>
+X2	X2/>	X2	tag/>	>
+<	X1		<	tag		>
+tag	tag		tag	tag		tag
+>	>		>	>		>
+*/
 int MergeCS(vector<int> &first, const vector<int> &second, vector<int> &target, uint n )
 {
     int nDiff = 0;
@@ -196,8 +240,30 @@ int MergeCS(vector<int> &first, const vector<int> &second, vector<int> &target, 
     {
         if( second[i] == CACHE::BOTTOM )                
             target[i] = first[i];
-        else
-            target[i] = second[i];
+		else if( second[i] > CACHE::BOTTOM )
+			target[i] = second[i];
+		else // second[i] < CACHE::BOTTOM
+		{			
+			if( first[i] < CACHE::BOTTOM )
+			{
+				if( first[i] == second[i] )
+					target[i] = second[i];
+				else
+					target[i] = CACHE::TOP;
+			}
+			if( first[i] == CACHE::BOTTOM )
+				target[i] = second[i];
+			else if( first[i] == CACHE::TOP )
+				target[i] = CACHE::TOP;
+			else     // first[i] > CACHE::TOP
+			{
+				uint tag = CACHE::BOTTOM - second[i];
+				if( tag == first[i] )
+					target[i] = first[i];
+				else
+					target[i] = CACHE::TOP;
+			}           
+		}
     }
 
     return nDiff;
@@ -215,11 +281,13 @@ int Dump(std::ostream &os, const std::vector<int> &flow, const vector<bool> &hit
                         os << "+++++:";
                 else
                 {
-                        if( hit[i]) 
-                                os << "H";
+                       
                         os << setw(5);
 
-                        os << flow[i] << ":";
+                        os << flow[i];
+						 if( hit[i]) 
+                                os << "H";
+						 os << ":";
                 }
         }
         return 0;
@@ -332,4 +400,10 @@ int CommonSet(const set<int> &s1, const set<int> &s2)
 	}
 
 	return 0;
+}
+
+uint TransAddress(uint oriAddr, uint offset)
+{
+	uint nAddr = oriAddr + offset - START;
+	return nAddr;
 }

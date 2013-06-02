@@ -65,13 +65,16 @@ int main(int argc, const char * *argv)
 
         CController *cons[3];
 		
-        cons[0] = new CController(szPath+"Controller1" + "_" + szCacheSet + "_" + szBlockSize + "_" + szAssoc  + ".gen");
-        cons[1] = new CController(szPath+"Controller2" + "_" + szCacheSet + "_" + szBlockSize + "_" + szAssoc  + ".gen");
-        cons[2] = new CController(szPath+"Controller3" + "_" + szCacheSet + "_" + szBlockSize + "_" + szAssoc  + ".gen");
+		cons[0] = new CController(szPath+"Controller1" + "_" + szCacheSet + "_" + szBlockSize + "_" + szAssoc +"_loop" + ".gen");
+        cons[1] = new CController(szPath+"Controller2" + "_" + szCacheSet + "_" + szBlockSize + "_" + szAssoc +"_loop"  + ".gen");
+        cons[2] = new CController(szPath+"Controller3" + "_" + szCacheSet + "_" + szBlockSize + "_" + szAssoc +"_loop"  + ".gen");
+		cerr << endl << "reading from " << cons[0]->m_szFile;
+		cerr << endl << "reading from " << cons[1]->m_szFile;
+		cerr << endl << "reading from " << cons[2]->m_szFile << endl;
         ParserInput(argc, argv);
 
 
-		string szOutFile = szPath + "controlSequence" + szSequence + "_" + szCacheSet + "_" + szBlockSize + "_" + szAssoc +".txt";
+		string szOutFile = szPath + "controlSequence" + szSequence + "_" + szCacheSet + "_" + szBlockSize + "_" + szAssoc +"_loop" +".txt";
         g_outf.open(szOutFile.c_str());
 
 #ifndef UPPER

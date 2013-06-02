@@ -17,10 +17,9 @@ int ReadCode(const char *szFile, int);
 int ReadCFG1(const char *, int nBigOffset );
 int ReadCFG2(const char *, int nBigOffset );
 
-int graphviz(CFunction *pFunc);
-
 int main(int argc, char ** argv)
 {
+	char *p = new char[10];
     if( argc < 3) 
     {
             cout << "Lack of args!\n";
@@ -34,6 +33,7 @@ int main(int argc, char ** argv)
 	string szDisFile = szBasename + ".dis";
 	string szCFG1 = szBasename + ".map";
 	string szCFG2 = szBasename + ".cfg";
+	string szGraph = szBasename + ".dot";
 
 	ReadCode(szDisFile.c_str(), nOffset * OFFSET );
 	ReadCFG1(szCFG1.c_str(), nOffset * OFFSET );
@@ -46,6 +46,7 @@ int main(int argc, char ** argv)
     g_RcsFile.close();
     g_LcsFile.close();
     g_GenFile.close();
+	g_DotFile.close();
     return 0;
 }
 
@@ -81,7 +82,7 @@ int ReadCode(const char *szFile, int nBigOffset)
         if( str1.find(':') == str1.npos )  // function or label line
         {
 			uint nAddr = hex2dec(str1);
-			nAddr += nBigOffset;
+			nAddr = TransAddress(nAddr, nBigOffset);
             string szFunc;
 			ss >> szFunc;
             szFunc = szFunc.substr(1, szFunc.size()-3);                     
@@ -176,7 +177,7 @@ int ReadCFG2(const char *szFile, int nBigOffset )
 			ss >> str; // for ":"
 			ss >> str;
 			nStart = hex2dec( str);
-			nStart = nStart + nBigOffset;
+			nStart = TransAddress(nStart, nBigOffset);
 			pBlock->SetStart( nStart );		
 			if( nStart == g_nEntryAddress )
 				g_pEntryBlock = pBlock;
@@ -289,20 +290,27 @@ int ReadCFG1( const char *szFile, int nBigOffset )
 }
 
 
-int SetOutFile(string szInFile)
+int SetOutFile(string szBaseFile)
 {
 	char szAssoc[17], szBlockSize[17], szCacheSet[17];
 	itoa(CACHE_SET, szCacheSet, 10);		
 	itoa(CACHE_LINE_SIZE, szBlockSize, 10 );
 	itoa(CACHE_ASSOCIATIVITY, szAssoc, 10);
 
-	szInFile = szInFile + "_" + szCacheSet + "_" + szBlockSize + "_" + szAssoc;
+	string szOutFile = szBaseFile + "_" + szCacheSet + "_" + szBlockSize + "_" + szAssoc + "_loop";
+
+	
 
         /*string szOutFile = szInFile + ".rcs";
         g_RcsFile.open(szOutFile.c_str());
         szOutFile = szInFile + ".lcs";
         g_LcsFile.open(szOutFile.c_str());*/
-        string szOutFile = szInFile + ".gen";
+        szOutFile = szOutFile + ".gen";
         g_GenFile.open( szOutFile.c_str() );
+		cerr << endl << "writing into " << szOutFile << endl;
+
+		szOutFile = szBaseFile + ".dot";
+		g_DotFile.open(szOutFile.c_str() );
+		cerr << endl << "writing into " << szOutFile << endl;
         return 0;
 }
