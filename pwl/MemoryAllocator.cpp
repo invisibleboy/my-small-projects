@@ -88,10 +88,7 @@ void CAllocator::readTrace()
 }
 
 void CAllocator::print(string szOutFile)
-{
-
-	if( !m_Blocks.empty() )	
-		cerr << m_Blocks.front()->_nID << " is not popped!" << endl;		
+{			
 	
 	ofstream outf;
 	outf.open(szOutFile.c_str());
@@ -110,6 +107,8 @@ void CAllocator::print(string szOutFile)
 
 void CStackAllocator::dump()
 {
+	if( !m_Blocks.empty() )	
+		cerr << m_Blocks.front()->_nID << " is not popped!" << endl;
 	string szOutFile = m_szTraceFile + ".stack";
 	print(szOutFile);
 }
@@ -124,16 +123,16 @@ int CStackAllocator::allocate(TraceE *traceE)
 	
 	if( m_Blocks.empty() )
 	{
-		newBlock = new MemBlock(m_nSize-1, traceE->_nFrameSize, traceE->_nID);
+		newBlock = new MemBlock(m_nSize-1, traceE->_nFrameSize);
 	}
 	else
 	{		
 		lastBlock = m_Blocks.front();
 		ADDRINT addr = lastBlock->_nStartAddr-lastBlock->_nSize;
-		newBlock = new MemBlock(addr, traceE->_nFrameSize, traceE->_nID);
+		newBlock = new MemBlock(addr, traceE->_nFrameSize);
 		
-		cerr << lastBlock->_nStartAddr << "--" << lastBlock->_nSize << endl;
-		cerr << "==allocate " << traceE->_nID << "-" << traceE->_nFrameSize << endl;
+		//cerr << lastBlock->_nStartAddr << "--" << lastBlock->_nSize << endl;
+		//cerr << "==allocate " << traceE->_nID << "-" << traceE->_nFrameSize << endl;
 		assert(lastBlock->_nStartAddr > lastBlock->_nSize );
 	}
 	
@@ -146,7 +145,7 @@ int CStackAllocator::allocate(TraceE *traceE)
 	ADDRINT startIndex = newBlock->_nStartAddr >> m_nLineSizeShift;
 	ADDRINT endIndex = (newBlock->_nStartAddr - newBlock->_nSize + 1 ) >> m_nLineSizeShift;
 	 
-	for(ADDRINT index = startIndex; index >= endIndex; -- index )
+	for(ADDRINT index = startIndex; index > endIndex; -- index )
 	{
 		this->m_32Addr2WriteCount[index] += traceE->_nWriteCount/(startIndex-endIndex+1);
 	}
@@ -158,11 +157,10 @@ void CStackAllocator::deallocate(TraceE *traceE)
 {
 	if(traceE->_nFrameSize == 0 )
 		return;
-	cerr << "==deallocate " << traceE->_nID << "-" << traceE->_nFrameSize << endl;
+	//cerr << "==deallocate " << traceE->_nID << "-" << traceE->_nFrameSize << endl;
 	if( m_Blocks.empty() )
 		cerr << "No entry for traceE->_nID! " << endl;
 	MemBlock *topBlock = m_Blocks.front();
-	//assert(topBlock->_nID ==traceE->_nID);
 	
 	m_Blocks.pop_front();
 }
@@ -180,50 +178,64 @@ int CHeapAllocator::allocate(TraceE *traceE)
 	int retv = 1;
 	MemBlock *newBlock = NULL;
 	list<MemBlock *>::iterator I = m_lastPlace, E = m_freeBlocks.end();
-	for(; I != E;  )
+	do
 	{
 		MemBlock *block = *I;
 
-		if(block->_nSize == 0 )
-		{	
-			list<MemBlock *>::iterator J = I;
-			++ I;
-			m_freeBlocks.erase(J);
-			delete block;
-			continue;
-			
+		// 1. Delayed block merging
+		list<MemBlock *>::iterator J = I;
+		++ J;
+		while( J != E && block->_nStartAddr - block->_nSize == (*J)->_nStartAddr )
+		{
+			block->_nSize += (*J)->_nSize;
+			list<MemBlock *>::iterator T = J;
+			++J;
+			// release the merged block
+			delete *T;
+			m_freeBlocks.erase(T);
+						
 		}
+		// 2. search the free block to use
 		// if found the place
 		if(block->_nSize >= traceE->_nFrameSize )
 		{
 			// allocate a new block and push it on the stack
-			newBlock = new MemBlock(block->_nStartAddr, traceE->_nFrameSize, traceE->_nID);
-			cerr << hex << "alloc: " << block->_nStartAddr << "--" << traceE->_nFrameSize << endl;
-			m_Blocks.push_front(newBlock);
+			newBlock = new MemBlock(block->_nStartAddr, traceE->_nFrameSize);
+			//cerr << hex << "alloc: " << block->_nStartAddr << "--" << traceE->_nFrameSize << endl;
+			m_hId2Block[traceE->_nID] = newBlock;
 
 			// split the block to use
 			block->_nSize -= traceE->_nFrameSize;
-			block->_nStartAddr -= traceE->_nFrameSize;	
+			block->_nStartAddr -= traceE->_nFrameSize;
 
 			// update last place
 			m_lastPlace = I;
+			if( block->_nSize == 0 )
+			{
+				delete block;
+				list<MemBlock *>::iterator J = I;
+				++ J;
+				m_lastPlace = J;				
+				m_freeBlocks.erase(I);
+				
+			}	
 
 			retv = 0;
 			break;
-		}	
-		++ I;	
-	}
-
+		}
+		if( ++ I == E )		
+			I = m_freeBlocks.begin();	
+	}while( I != m_lastPlace );
+	
 	if( retv != 0 )
 		return retv;	
-
 	
 
-	// update write count
+	// 3. update write count
 	ADDRINT startIndex = newBlock->_nStartAddr >> m_nLineSizeShift;
 	ADDRINT endIndex = (newBlock->_nStartAddr - newBlock->_nSize + 1 ) >> m_nLineSizeShift;
 	 
-	for(ADDRINT index = startIndex; index >= endIndex; -- index )
+	for(ADDRINT index = startIndex; index > endIndex; -- index )
 	{
 		this->m_32Addr2WriteCount[index] += traceE->_nWriteCount/(startIndex-endIndex+1);
 	}	
@@ -234,33 +246,18 @@ void CHeapAllocator::deallocate(TraceE *traceE)
 {
 	if(traceE->_nFrameSize == 0 )
 		return ;
-	MemBlock *topBlock = m_Blocks.front();
-	assert(topBlock->_nSize = traceE->_nFrameSize);
-
+	MemBlock *block = m_hId2Block[traceE->_nID];
+	assert(block->_nSize = traceE->_nFrameSize);	
 	
-	// 1. identify different situations
-	int flag = 0;
-	MemBlock *prevBlock = NULL, *nextBlock = NULL;
+	// if found the place to release back the used block
 	list<MemBlock *>::iterator I = m_freeBlocks.begin(), E = m_freeBlocks.end();
 	for(; I != E; ++ I )
 	{
-		nextBlock = *I;
+		MemBlock *nextBlock = *I;
 		// if found the place to return back the used block
-		if(nextBlock->_nStartAddr < topBlock->_nStartAddr )
-		{		
-			// merge with the next block
-			if( topBlock->_nStartAddr - topBlock->_nSize == nextBlock->_nStartAddr )
-				flag |= 2;
-			if( I != m_freeBlocks.begin() ) 
-			{
-				list<MemBlock *>::iterator prevI = I;
-				-- prevI;
-				prevBlock = *prevI;	
-
-				// merge with the previous block
-				if( prevBlock->_nStartAddr - prevBlock->_nSize == topBlock->_nStartAddr )
-					flag |= 1;
-			}			
+		if(nextBlock->_nStartAddr < block->_nStartAddr )
+		{
+			m_freeBlocks.insert(I, block);
 			break;
 		}
 	}
@@ -268,38 +265,8 @@ void CHeapAllocator::deallocate(TraceE *traceE)
 	// if not found the next block
 	if( I == E )
 	{
-		if( I != m_freeBlocks.begin() ) 
-		{
-			list<MemBlock *>::iterator prevI = I;
-			-- prevI;
-			prevBlock = *prevI;	
-			// merge with the previous block
-			if( prevBlock->_nStartAddr - prevBlock->_nSize == topBlock->_nStartAddr )
-				flag = 1;
-		}
-	}
-	
-	// 2. insert back to free blocks
-	if( flag == 0 )
-		m_freeBlocks.insert(I, topBlock);
-	else if( flag == 1 )
-	{
-		prevBlock->_nSize  += topBlock->_nSize;
-	}
-	else if( flag == 2 )
-	{
-		nextBlock->_nSize += topBlock->_nSize;
-		nextBlock->_nStartAddr += topBlock->_nSize;
-	}
-	// merge with both ajacents
-	else if( flag == 3 )
-	{
-		prevBlock->_nSize  += topBlock->_nSize + nextBlock->_nSize;
-		m_freeBlocks.erase(I); // remove the next block
-	}
-
-	// 3. remove from used blocks
-	m_Blocks.pop_front();
+		m_freeBlocks.push_back(block);
+	}	
 }
 
 

@@ -39,11 +39,10 @@ struct MemBlock
 	ADDRINT _nSize;
 	UINT32 _nID;
 
-	MemBlock(ADDRINT addr, ADDRINT nSize, UINT32 nID)
+	MemBlock(ADDRINT addr, ADDRINT nSize)
 	{
 		_nStartAddr = addr;
 		_nSize = nSize;
-		_nID = nID;
 	}
 };
 
@@ -61,9 +60,8 @@ protected:
 	virtual void deallocate(TraceE *traceE){};
 
 protected:
-	list<TraceE*> m_Trace;  // temporarily store the function invocation/ret trace
-	list<MemBlock*>  m_Blocks; // the used memory block list
-	list<MemBlock*> m_freeBlocks; // the free list
+	list<TraceE*> m_Trace;  // temporarily store the function invocation/ret trace	
+	list<MemBlock*> m_freeBlocks; // the free list	
 	
 
 	// for output
@@ -86,6 +84,8 @@ private:
 	virtual int allocate(TraceE *traceE);
 	virtual void deallocate(TraceE *traceE);	
 	virtual void dump();
+private:
+	list<MemBlock*>  m_Blocks; // the used memory block list
 };
 
 class CHeapAllocator: public CAllocator
@@ -93,7 +93,7 @@ class CHeapAllocator: public CAllocator
 public:
 	CHeapAllocator(ADDRINT nSize, ADDRINT nLineSize, string szTraceFile) : CAllocator(nSize, nLineSize, szTraceFile)
 	{
-		MemBlock *block = new MemBlock(nSize-1, nSize, 0);
+		MemBlock *block = new MemBlock(nSize-1, nSize);
 		m_freeBlocks.push_back(block);
 		m_lastPlace = m_freeBlocks.begin();
 	}
@@ -104,4 +104,5 @@ private:
 
 private:
 	list<MemBlock*>::iterator m_lastPlace;	
+	map<UINT32, MemBlock *> m_hId2Block; // the memory block allocated for each entry
 };
