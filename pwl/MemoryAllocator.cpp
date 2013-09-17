@@ -62,7 +62,7 @@ void CAllocator::readTrace()
 			ss >> szFunc;
 			szFunc = szFunc.substr(1);
 			stringstream ss1(szFunc);	
-			ss1 >> nID;	
+			ss1 >>hex>> nID;	
 
 			traceE = new TraceE(szFunc, true, 0, 0, nID);
 			m_Id2TraceE[nID] = traceE;			
@@ -70,7 +70,7 @@ void CAllocator::readTrace()
 		}
 		else   // function exit
 		{
-			ss >> nID;			
+			ss >>hex >> nID;			
 			ss >> nFrameSize;
 			ss >> nWriteCount;
 			traceE = new TraceE(szFunc, false, nFrameSize, nWriteCount, nID);
