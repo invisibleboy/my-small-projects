@@ -8,28 +8,30 @@ int main(int argc, char *argv[])
 		return -1;
 	}
 
-	ADDRINT nSize;
+	ADDRINT nSizePower;
 	stringstream ss(argv[1]);
-	ss >> nSize;
-	nSize <<= 10;  // in unit of Kilo bytes
+	ss >> nSizePower;	
+	cerr << "Memory Size (in bytes):\t" << hex << (1<<nSizePower) << dec << endl;	
+
+	string szFile = argv[2];
 
 	ADDRINT nLineSizeShift;
-	stringstream ss1(argv[2]);
+	stringstream ss1(argv[3]);
 	ss1 >> nLineSizeShift;
-
-	string szFile = argv[3];
 
 	bool bStackAllocator = true;
 	stringstream ss2(argv[4]);
 	ss2 >> bStackAllocator;	
+
+	
 	
 
 	CAllocator *allocator;
 
 if(bStackAllocator)
-	allocator = new CStackAllocator(nSize, nLineSizeShift, szFile);
+	allocator = new CStackAllocator(nSizePower, nLineSizeShift, szFile);
 else
-	allocator = new CHeapAllocator(nSize, nLineSizeShift, szFile);
+	allocator = new CHeapAllocator(nSizePower, nLineSizeShift, szFile);
 
 
 	allocator->run();

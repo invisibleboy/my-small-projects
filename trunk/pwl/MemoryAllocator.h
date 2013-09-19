@@ -12,7 +12,6 @@ using namespace std;
 #define UINT64 long long 
 #define ADDRINT unsigned int
 
-#define MEMORY_LINE_SHIFT 2
 
 struct TraceE
 {
@@ -65,13 +64,12 @@ protected:
 	
 
 	// for output
-	vector<UINT64> m_32Addr2WriteCount;  // write count for each memory 32-bit address
+	vector<double> m_32Addr2WriteCount;  // write count for each memory 32-bit address
 	
+	ADDRINT m_nSizePower;
 	ADDRINT m_nSize;	// the size of the memory space
 	UINT32 m_nLineSizeShift;	// the size of each memory line which consider the write count as a whole
-	string m_szTraceFile; // the file name of trace
-
-	map<UINT32, TraceE*> m_Id2TraceE;  // for the aim of decompress the trace
+	string m_szTraceFile; // the file name of trace	
 };
 
 class CStackAllocator: public CAllocator
@@ -93,7 +91,7 @@ class CHeapAllocator: public CAllocator
 public:
 	CHeapAllocator(ADDRINT nSize, ADDRINT nLineSize, string szTraceFile) : CAllocator(nSize, nLineSize, szTraceFile)
 	{
-		MemBlock *block = new MemBlock(nSize-1, nSize);
+		MemBlock *block = new MemBlock(m_nSize-1, m_nSize);
 		m_freeBlocks.push_back(block);
 		m_lastPlace = m_freeBlocks.begin();
 	}
