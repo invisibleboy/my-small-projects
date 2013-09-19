@@ -75,9 +75,13 @@ else
 #			PIN_OPTION="$i"		
 #		fi	
 #	done
-	APP="   "
-	echo "==$PIN -t $PIN_TOOL $PIN_OPTION -- ./main.ori $RUN_OPTIONS 2>err.log 1>out.log "
-	$PIN -t $PIN_TOOL $PIN_OPTION -- ./main.ori $RUN_OPTIONS 2>err.log 1>out.log	
+	#echo "==$PIN -t $PIN_TOOL $PIN_OPTION -- ./main.ori $RUN_OPTIONS 2>err.log 1>out.log "
+	#$PIN -t $PIN_TOOL $PIN_OPTION -- ./main.ori $RUN_OPTIONS 2>err.log 1>out.log
+
+	##for pcm wear leveling
+	OPTION="$PIN -t $PIN_TOOL $PIN_OPTION -- "
+	echo "./runme_small.sh $OPTION"
+	./runme_small.sh $OPTION
 fi
 
 
