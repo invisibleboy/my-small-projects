@@ -1,16 +1,17 @@
 #include "MemoryAllocator.h"
 #include <assert.h>
 
-CAllocator::CAllocator(ADDRINT nSize, ADDRINT nLineSizeShift, string szTraceFile) 
+CAllocator::CAllocator(ADDRINT nSizePower, ADDRINT nLineSizeShift, string szTraceFile) 
 {
-	m_nSize = nSize; 
+	m_nSize = 1 << nSizePower;  // in power	
+	m_nSizePower = nSizePower;
 	m_nLineSizeShift = nLineSizeShift;
 	m_szTraceFile = szTraceFile;
 }
 
 void CAllocator::run()
 {	
-	m_32Addr2WriteCount.assign(m_nSize >> m_nLineSizeShift,0);
+	m_32Addr2WriteCount.assign(m_nSize >> m_nLineSizeShift,0.0);
 
 
 	readTrace();
@@ -40,6 +41,9 @@ void CAllocator::readTrace()
 	ifstream inf;
 	inf.open(m_szTraceFile.c_str());
 	string szLine;
+
+	map<UINT32, TraceE*> hId2Entry;
+	// skip the prolog
 	while(getline(inf, szLine) )
 		if( szLine[0] == ':')
 			break;
@@ -64,18 +68,20 @@ void CAllocator::readTrace()
 			stringstream ss1(szFunc);	
 			ss1 >>hex>> nID;	
 
-			traceE = new TraceE(szFunc, true, 0, 0, nID);
-			m_Id2TraceE[nID] = traceE;			
+			traceE = new TraceE(szFunc, true, 16, 0, nID);
+			hId2Entry[nID] = traceE;			
 			
 		}
 		else   // function exit
 		{
 			ss >>hex >> nID;			
-			ss >> nFrameSize;
-			ss >> nWriteCount;
-			traceE = new TraceE(szFunc, false, nFrameSize, nWriteCount, nID);
+			ss >>hex >> nFrameSize;
+			ss >>hex >> nWriteCount;
+			// assume there are four push instructions on average
+			traceE = new TraceE(szFunc, false, nFrameSize+16, nWriteCount, nID);
+		    
 			
-			TraceE *old = m_Id2TraceE[nID];
+			TraceE *old = hId2Entry[nID];
 			if( old == NULL )
 				cerr << "No entry for " << nID << endl;
 			old->_nFrameSize = traceE->_nFrameSize;
@@ -98,7 +104,7 @@ void CAllocator::print(string szOutFile)
 	ADDRINT nLines = m_nSize >> m_nLineSizeShift;
 	for(; index < nLines; ++ index )
 	{		
-		outf << hex << (index << m_nLineSizeShift) << "\t" << m_32Addr2WriteCount[index] << endl;
+		outf << hex << (index << m_nLineSizeShift) << "\t" <<dec << m_32Addr2WriteCount[index] << endl;
 	}
 	
 
@@ -108,8 +114,12 @@ void CAllocator::print(string szOutFile)
 void CStackAllocator::dump()
 {
 	if( !m_Blocks.empty() )	
-		cerr << m_Blocks.front()->_nID << " is not popped!" << endl;
-	string szOutFile = m_szTraceFile + ".stack";
+		cerr << hex << m_Blocks.front()->_nID << " is not popped!" <<dec << endl;
+	char digits[16];
+	sprintf(digits, "%d", m_nSizePower);
+	string szOutFile = m_szTraceFile + "_" + digits;
+	sprintf(digits, "%d", 1);
+	szOutFile = szOutFile + "_" + digits;
 	print(szOutFile);
 }
 
@@ -128,12 +138,17 @@ int CStackAllocator::allocate(TraceE *traceE)
 	else
 	{		
 		lastBlock = m_Blocks.front();
-		ADDRINT addr = lastBlock->_nStartAddr-lastBlock->_nSize;
-		newBlock = new MemBlock(addr, traceE->_nFrameSize);
+		if(lastBlock->_nStartAddr <= lastBlock->_nSize )
+		{
+			cerr << hex << lastBlock->_nStartAddr << " cannot afford " << lastBlock->_nSize << " bytes!" << endl;
+			assert(false );
+		}
+		ADDRINT addr = lastBlock->_nStartAddr-lastBlock->_nSize;		
 		
 		//cerr << lastBlock->_nStartAddr << "--" << lastBlock->_nSize << endl;
 		//cerr << "==allocate " << traceE->_nID << "-" << traceE->_nFrameSize << endl;
-		assert(lastBlock->_nStartAddr > lastBlock->_nSize );
+		
+		newBlock = new MemBlock(addr, traceE->_nFrameSize);
 	}
 	
 	
@@ -145,9 +160,13 @@ int CStackAllocator::allocate(TraceE *traceE)
 	ADDRINT startIndex = newBlock->_nStartAddr >> m_nLineSizeShift;
 	ADDRINT endIndex = (newBlock->_nStartAddr - newBlock->_nSize + 1 ) >> m_nLineSizeShift;
 	 
-	for(ADDRINT index = startIndex; index > endIndex; -- index )
+    double dAvgCount = ((double)traceE->_nWriteCount)/(startIndex-endIndex+1);
+    //cerr <<hex << "dealloc " << traceE->_nID << ":" << traceE->_nFrameSize << ":"<< traceE->_nWriteCount << ":" << nAvgCount << endl;
+	for(ADDRINT index = startIndex; index >= endIndex; -- index )
 	{
-		this->m_32Addr2WriteCount[index] += traceE->_nWriteCount/(startIndex-endIndex+1);
+		this->m_32Addr2WriteCount[index] += dAvgCount;
+		if( index == 0 )
+			break;
 	}
 	
 	return 0;
@@ -156,37 +175,50 @@ int CStackAllocator::allocate(TraceE *traceE)
 void CStackAllocator::deallocate(TraceE *traceE)
 {
 	if(traceE->_nFrameSize == 0 )
-		return;
+		cerr << "Frame size is zero!" << endl;
 	//cerr << "==deallocate " << traceE->_nID << "-" << traceE->_nFrameSize << endl;
 	if( m_Blocks.empty() )
 		cerr << "No entry for traceE->_nID! " << endl;
 	MemBlock *topBlock = m_Blocks.front();
-	
+	delete topBlock;
 	m_Blocks.pop_front();
 }
 
 void CHeapAllocator::dump()
 {
-	string szOutFile = m_szTraceFile + ".heap";
+	char digits[16];
+	sprintf(digits, "%d", m_nSizePower);
+	string szOutFile = m_szTraceFile + "_" + digits;
+	sprintf(digits, "%d", 0);
+	szOutFile = szOutFile + "_" + digits;
 	print(szOutFile);
 }
 
 int CHeapAllocator::allocate(TraceE *traceE)
 {
 	if(traceE->_nFrameSize == 0 )
+	{
+		cerr << "Frame size is zero!" << endl;
 		return 0;
+	}
 	int retv = 1;
 	MemBlock *newBlock = NULL;
+	bool bMergeLastPlace = false;
 	list<MemBlock *>::iterator I = m_lastPlace, E = m_freeBlocks.end();
 	do
 	{
 		MemBlock *block = *I;
 
-		// 1. Delayed block merging
+		// 1. Delayed block merging		
 		list<MemBlock *>::iterator J = I;
 		++ J;
 		while( J != E && block->_nStartAddr - block->_nSize == (*J)->_nStartAddr )
 		{
+			if( J == m_lastPlace )
+			{
+				bMergeLastPlace = true;
+				m_lastPlace == I;
+			}
 			block->_nSize += (*J)->_nSize;
 			list<MemBlock *>::iterator T = J;
 			++J;
@@ -215,7 +247,9 @@ int CHeapAllocator::allocate(TraceE *traceE)
 				delete block;
 				list<MemBlock *>::iterator J = I;
 				++ J;
-				m_lastPlace = J;				
+				m_lastPlace = J;	
+				if( m_lastPlace == E )
+					m_lastPlace = m_freeBlocks.begin();			
 				m_freeBlocks.erase(I);
 				
 			}	
@@ -225,19 +259,25 @@ int CHeapAllocator::allocate(TraceE *traceE)
 		}
 		if( ++ I == E )		
 			I = m_freeBlocks.begin();	
-	}while( I != m_lastPlace );
+	}while( I != m_lastPlace && !bMergeLastPlace);
 	
 	if( retv != 0 )
-		return retv;	
+	{
+		cerr << "While allocating a frame of " << hex << traceE->_nFrameSize << dec << endl;
+		return retv;
+	}	
 	
 
 	// 3. update write count
 	ADDRINT startIndex = newBlock->_nStartAddr >> m_nLineSizeShift;
 	ADDRINT endIndex = (newBlock->_nStartAddr - newBlock->_nSize + 1 ) >> m_nLineSizeShift;
 	 
-	for(ADDRINT index = startIndex; index > endIndex; -- index )
+	double dAvgCount = ((double)traceE->_nWriteCount)/(startIndex-endIndex+1);
+	for(ADDRINT index = startIndex; index >= endIndex; -- index )
 	{
-		this->m_32Addr2WriteCount[index] += traceE->_nWriteCount/(startIndex-endIndex+1);
+		this->m_32Addr2WriteCount[index] += dAvgCount;
+		if(index == 0 )
+			break;
 	}	
 	return 0;
 }
@@ -245,10 +285,16 @@ int CHeapAllocator::allocate(TraceE *traceE)
 void CHeapAllocator::deallocate(TraceE *traceE)
 {
 	if(traceE->_nFrameSize == 0 )
+	{
+		cerr << "Frame size is zero!" << endl;
 		return ;
+	}
 	MemBlock *block = m_hId2Block[traceE->_nID];
 	assert(block->_nSize = traceE->_nFrameSize);	
-	
+	//cerr << hex << "dealloc: " << block->_nStartAddr << "--" << traceE->_nFrameSize << endl;	
+	if( block->_nStartAddr == 0x12d7 )
+		block = block;
+
 	// if found the place to release back the used block
 	list<MemBlock *>::iterator I = m_freeBlocks.begin(), E = m_freeBlocks.end();
 	for(; I != E; ++ I )
