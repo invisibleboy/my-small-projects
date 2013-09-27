@@ -65,6 +65,7 @@ protected:
 
 	// for output
 	vector<double> m_32Addr2WriteCount;  // write count for each memory 32-bit address
+	vector<UINT64> m_32Addr2FrameCount;
 	
 	ADDRINT m_nSizePower;
 	ADDRINT m_nSize;	// the size of the memory space
