@@ -68,18 +68,34 @@ void CAllocator::readTrace()
 			szFunc = szFunc.substr(1);
 			stringstream ss1(szFunc);	
 			ss1 >>hex>> nID;	
+		
+			ss >>hex >> nWriteCount;
+			ss >>hex >> nFrameSize;		
 
+<<<<<<< .mine
+			traceE = new TraceE("", true, nFrameSize+16, nWriteCount, nID);
+=======
 			ss >> dec >> nFrameSize >> nWriteCount;
 			traceE = new TraceE("", true, nFrameSize+16, nWriteCount, nID);			
+>>>>>>> .r39
 			hId2Entry[nID] = traceE;			
 			
 		}
 		else   // function exit
 		{
+<<<<<<< .mine
+			ss >>hex >> nID;			
+			
+=======
 			ss >>hex >> nID;		
 			
+>>>>>>> .r39
 			// assume there are four push instructions on average
+<<<<<<< .mine
+			traceE = new TraceE("", false, 0, 0, nID);		    
+=======
 		    	traceE = new TraceE("", false, 16, 0, nID);
+>>>>>>> .r39
 			
 			TraceE *old = hId2Entry[nID];
 			if( old == NULL )
@@ -104,7 +120,11 @@ void CAllocator::print(string szOutFile)
 	ADDRINT nLines = m_nSize >> m_nLineSizeShift;
 	for(; index < nLines; ++ index )
 	{		
+<<<<<<< .mine
+		outf << hex << (index << m_nLineSizeShift) << "\t" <<dec << m_32Addr2WriteCount[index] << "\t" << m_32Addr2FrameCount[index]<< endl;
+=======
 		outf << hex << (index << m_nLineSizeShift) << "\t" <<dec << m_32Addr2WriteCount[index] << "\t" << m_32Addr2FrameCount[index] << endl;
+>>>>>>> .r39
 	}
 	
 
@@ -156,19 +176,32 @@ int CStackAllocator::allocate(TraceE *traceE)
 	
 	
 
-	// update write count
+	// 3. update write count
+	ADDRINT nEndAddr = newBlock->_nStartAddr - newBlock->_nSize + 1;
 	ADDRINT startIndex = newBlock->_nStartAddr >> m_nLineSizeShift;
-	ADDRINT endIndex = (newBlock->_nStartAddr - newBlock->_nSize + 1 ) >> m_nLineSizeShift;
+	ADDRINT endIndex = nEndAddr >> m_nLineSizeShift;
+	ADDRINT mask = (1 << m_nLineSizeShift) - 1;
 	 
-    double dAvgCount = ((double)traceE->_nWriteCount)/(startIndex-endIndex+1);
-    //cerr <<hex << "dealloc " << traceE->_nID << ":" << traceE->_nFrameSize << ":"<< traceE->_nWriteCount << ":" << nAvgCount << endl;
+	double dAvgCount = ((double)traceE->_nWriteCount)/newBlock->_nSize;
 	for(ADDRINT index = startIndex; index >= endIndex; -- index )
 	{
+<<<<<<< .mine
+		ADDRINT count = mask;
+		if( index == startIndex )
+			count = (mask & newBlock->_nStartAddr);
+		else if( index == endIndex )
+			count = mask - (mask & nEndAddr );
+		
+		this->m_32Addr2WriteCount[index] += dAvgCount * (count+1);
+		++ this->m_32Addr2FrameCount[index];
+		if(index == 0 )
+=======
 		++ this->m_32Addr2FrameCount[index];
 		this->m_32Addr2WriteCount[index] += dAvgCount;
 		if( index == 0 )
+>>>>>>> .r39
 			break;
-	}
+	}	
 	
 	return 0;
 }
@@ -270,14 +303,27 @@ int CHeapAllocator::allocate(TraceE *traceE)
 	
 
 	// 3. update write count
+	ADDRINT nEndAddr = newBlock->_nStartAddr - newBlock->_nSize + 1;
 	ADDRINT startIndex = newBlock->_nStartAddr >> m_nLineSizeShift;
-	ADDRINT endIndex = (newBlock->_nStartAddr - newBlock->_nSize + 1 ) >> m_nLineSizeShift;
+	ADDRINT endIndex = nEndAddr >> m_nLineSizeShift;
+	ADDRINT mask = (1 << m_nLineSizeShift) - 1;
 	 
-	double dAvgCount = ((double)traceE->_nWriteCount)/(startIndex-endIndex+1);
+	double dAvgCount = ((double)traceE->_nWriteCount)/newBlock->_nSize;
 	for(ADDRINT index = startIndex; index >= endIndex; -- index )
 	{
+<<<<<<< .mine
+		ADDRINT count = mask;
+		if( index == startIndex )
+			count = (mask & newBlock->_nStartAddr);
+		else if( index == endIndex )
+			count = mask - (mask & nEndAddr );
+		
+		this->m_32Addr2WriteCount[index] += dAvgCount * (count+1);
+		++ this->m_32Addr2FrameCount[index];
+=======
 		++ this->m_32Addr2FrameCount[index];
 		this->m_32Addr2WriteCount[index] += dAvgCount;
+>>>>>>> .r39
 		if(index == 0 )
 			break;
 	}	

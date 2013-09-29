@@ -53,23 +53,27 @@ double compute(string szFile, UINT64 nLen)
 	for(; I != E; ++ I )
 		sum += *I;	
 
-	double exp = sum/g_writes.size();
-	cerr << "sum:\t" << sum << endl;
+	double exp = sum/g_writes.size()/4;
+	//cerr << "sum:\t" << sum << endl;
 
 	// 2. compute sum of variance
 	double sumVariance = 0.0;
 	I = g_writes.begin();
 	for(; I != E; ++ I )
 	{
-		double d = *I;
+		//cerr << sumVariance << ":\t";
+		double d = *I/4;
 		sumVariance += pow(d-exp, 2);
+		//cerr << " + power of " << d << "-" << exp << "=" << sumVariance << endl;
+		
 	}
+	
 	cerr << "sumVariance:\t" << sumVariance << endl;
 
 	// 3. compute standard deviation
-	double stdDev = sumVariance/(g_writes.size()-1);
+	double stdDev = sumVariance*4/(g_writes.size()*4-1);
 	double wear = sqrt(stdDev)/exp;
-	cerr << "wear:\t" << wear << endl;
+	//cerr << "wear:\t" << wear << endl;
 	
 	return wear;
 }
@@ -84,7 +88,7 @@ int main(int argc, char **argv)
 	}
 	
 	string szBench = argv[1];
-	string szPrefix = "stack.out_3";
+	string szPrefix = "stack.out_5";
 	string szFlag = argv[2];
 
 	string szOutFile = szPrefix + "--" + szFlag;
