@@ -72,8 +72,9 @@ void CAllocator::readTrace()
 			ss >>dec >> nFrameSize;	
 			ss >>dec >> nWriteCount;				
 			
-			traceE = new TraceE(szFunc, true, nFrameSize, nWriteCount, nID);	
-			hId2Entry[nID] = traceE;					
+			traceE = new TraceE(szFunc, true, nFrameSize+16, nWriteCount, nID);	
+			hId2Entry[nID] = traceE;			
+			//cerr << "Entry " << nID << endl;		
 		}
 		else   // function exit
 		{
@@ -104,7 +105,7 @@ void CAllocator::print(string szOutFile)
 	ADDRINT nLines = m_nSize >> m_nLineSizeShift;
 	for(; index < nLines; ++ index )
 	{		
-		outf << hex << (index << m_nLineSizeShift)  << "\t" << m_32Addr2FrameCount[index] << "\t" <<dec << m_32Addr2WriteCount[index]<< endl;
+		outf << hex << (index << m_nLineSizeShift)  << "\t" <<dec << m_32Addr2FrameCount[index] << "\t" <<dec << m_32Addr2WriteCount[index]<< endl;
 
 	}
 	
@@ -134,14 +135,14 @@ int CStackAllocator::allocate(TraceE *traceE)
 	
 	if( m_Blocks.empty() )
 	{
-		newBlock = new MemBlock(m_nSize-1, traceE->_nFrameSize);
+		newBlock = new MemBlock(0, m_nSize-1, traceE->_nFrameSize);
 	}
 	else
 	{		
 		lastBlock = m_Blocks.front();
-		if(lastBlock->_nStartAddr <= lastBlock->_nSize )
+		if(lastBlock->_nStartAddr <= traceE->_nFrameSize )
 		{
-			cerr << hex << lastBlock->_nStartAddr << " cannot afford " << lastBlock->_nSize << " bytes!" << endl;
+			cerr << hex << lastBlock->_nStartAddr << " cannot afford " << traceE->_nFrameSize << " bytes!" << endl;
 			assert(false );
 		}
 		ADDRINT addr = lastBlock->_nStartAddr-lastBlock->_nSize;		
@@ -149,7 +150,7 @@ int CStackAllocator::allocate(TraceE *traceE)
 		//cerr << lastBlock->_nStartAddr << "--" << lastBlock->_nSize << endl;
 		//cerr << "==allocate " << traceE->_nID << "-" << traceE->_nFrameSize << endl;
 		
-		newBlock = new MemBlock(addr, traceE->_nFrameSize);
+		newBlock = new MemBlock(traceE->_nID, addr, traceE->_nFrameSize);
 	}
 	
 	
@@ -164,19 +165,38 @@ int CStackAllocator::allocate(TraceE *traceE)
 	ADDRINT mask = (1 << m_nLineSizeShift) - 1;
 	 
 	double dAvgCount = ((double)traceE->_nWriteCount)/newBlock->_nSize;
+	
+	double dCount = 0.0;
+	
+	
+
 	for(ADDRINT index = startIndex; index >= endIndex; -- index )
 	{
+		if( startIndex == endIndex )
+		{
+			dCount = traceE->_nWriteCount;
+			this->m_32Addr2WriteCount[index] += traceE->_nWriteCount;
+			++ this->m_32Addr2FrameCount[index];
+			break;
+		}
+
 		ADDRINT count = mask;
 		if( index == startIndex )
 			count = (mask & newBlock->_nStartAddr);
 		else if( index == endIndex )
 			count = mask - (mask & nEndAddr );
-		
+		dCount += dAvgCount * (count+1);
 		this->m_32Addr2WriteCount[index] += dAvgCount * (count+1);
 		++ this->m_32Addr2FrameCount[index];
 		if(index == 0 )
 			break;
 	}	
+	
+    if( dCount > traceE->_nWriteCount + 1 || dCount < traceE->_nWriteCount -1 )
+	{
+		cerr << hex << traceE->_nID << ":\t" << dec << traceE->_nWriteCount << endl;
+		assert(false);
+	}
 	
 	return 0;
 }
@@ -241,7 +261,7 @@ int CHeapAllocator::allocate(TraceE *traceE)
 		if(block->_nSize >= traceE->_nFrameSize )
 		{
 			// allocate a new block and push it on the stack
-			newBlock = new MemBlock(block->_nStartAddr, traceE->_nFrameSize);
+			newBlock = new MemBlock(traceE->_nID, block->_nStartAddr, traceE->_nFrameSize);
 			//cerr << hex << "alloc: " << block->_nStartAddr << "--" << traceE->_nFrameSize << endl;
 			m_hId2Block[traceE->_nID] = newBlock;
 
@@ -284,20 +304,35 @@ int CHeapAllocator::allocate(TraceE *traceE)
 	ADDRINT mask = (1 << m_nLineSizeShift) - 1;
 	 
 	double dAvgCount = ((double)traceE->_nWriteCount)/newBlock->_nSize;
+	double dCount = 0.0;	
+
 	for(ADDRINT index = startIndex; index >= endIndex; -- index )
 	{
+		if( startIndex == endIndex )
+		{
+			dCount = traceE->_nWriteCount;
+			this->m_32Addr2WriteCount[index] += traceE->_nWriteCount;
+			++ this->m_32Addr2FrameCount[index];
+			break;
+		}
+
 		ADDRINT count = mask;
 		if( index == startIndex )
 			count = (mask & newBlock->_nStartAddr);
 		else if( index == endIndex )
 			count = mask - (mask & nEndAddr );
-		
+		dCount += dAvgCount * (count+1);
 		this->m_32Addr2WriteCount[index] += dAvgCount * (count+1);
 		++ this->m_32Addr2FrameCount[index];
-
 		if(index == 0 )
 			break;
 	}	
+	
+    if( dCount > traceE->_nWriteCount + 1 || dCount < traceE->_nWriteCount -1 )
+	{
+		cerr << hex << traceE->_nID << ":\t" << dec << traceE->_nWriteCount << endl;
+		assert(false);
+	}
 	return 0;
 }
 
@@ -305,7 +340,7 @@ void CHeapAllocator::deallocate(TraceE *traceE)
 {
 	if(traceE->_nFrameSize == 0 )
 	{
-		cerr << "Frame size is zero!" << endl;
+		//cerr << "Frame size is zero!" << endl;
 		return ;
 	}
 	MemBlock *block = m_hId2Block[traceE->_nID];
