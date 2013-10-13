@@ -1,11 +1,12 @@
-DWARF_LIB=/home/gpu/qali/develop/dwarf-20111214/libdwarf
-LIBDIR= -L$(DWARF_LIB)
 LIBS= -ldwarf -lelf
-CFLAGS= -Wall -I$(DWARF_LIB) -O0 -g
+CFLAGS= -Wall -I/usr/include -I. -O0 -g
+CC1=g++
 
-all: parser getfunction
+all: parser getfunction getSymbol
 parser:
-	$(CC) $(CFLAGS) parser.c -o parser $(LIBDIR) $(LIBS)
+	$(CC) $(CFLAGS) parser.c -o parser  $(LIBS)
 
 getfunction:
-	$(CC) $(CFLAGS) getfunction.c -o getfunction $(LIBDIR) $(LIBS)
+	$(CC) $(CFLAGS) getfunction.c -o getfunction  $(LIBS)
+getSymbol: getSymbol.cpp
+	$(CC1) $(CFLAGS) getSymbol.cpp tool.cpp -o getSymbol  $(LIBS)

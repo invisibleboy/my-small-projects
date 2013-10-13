@@ -1,13 +1,13 @@
 
-/*  parser.c
-    This file is used to obtain the function symbol infos from an object file with DWARF debug infos
+/*  getSymbol.cpp
+    This file is used to obtain the global data symbol infos from an object file with DWARF debug infos
 
     The --names 
     option adds some extra printing.
 
     To use, try
         make
-        ./getfunction getfunction
+        ./getSymbol getSymbol
 */
 #include <sys/types.h> /* For open() */
 #include <sys/stat.h>  /* For open() */
@@ -20,6 +20,9 @@
 #include <assert.h>
 #include "dwarf.h"
 #include "libdwarf.h"
+#include "tool.h"
+
+using namespace std;
 
 #define bool int
 #define true 1
@@ -39,6 +42,7 @@ int Error(int res, const char *szInfo, bool bWarn);
 int printIndent(char c, int nTab);
 bool IsGoodTag( Dwarf_Half tag);
 bool VerifiedUserFunc( Dwarf_Die die);
+unsigned int GetTypeSize(Dwarf_Debug dbg, Dwarf_Die die, string szInfo);
 
 
 Dwarf_Unsigned BlockValue(Dwarf_Block *block, Dwarf_Half form);
@@ -199,7 +203,20 @@ DepthFirst(Dwarf_Debug dbg, Dwarf_Die in_die,int in_level,
 		else if( tag == DW_TAG_subprogram )
 		{
 			if( VerifiedUserFunc( cur_die ) )
-				print_die_data(dbg, cur_die, in_level, sf);
+			{
+				print_die_data(dbg,cur_die,in_level,sf);
+				res = dwarf_child(cur_die,&child,&error);
+				Error(res, "SEARCHING DFS of CU", true);  
+		
+				// DFS
+				if(res == DW_DLV_OK) {
+				    DepthFirst(dbg,child,in_level+1,sf);
+				}
+			}	
+		}
+		else if( tag == DW_TAG_variable)
+		{
+			print_die_data(dbg,cur_die,in_level,sf);
 		}
         
 		// WFS
@@ -280,8 +297,9 @@ print_die_data(Dwarf_Debug dbg, Dwarf_Die print_me,int level,
 		
 
 	{
-		printIndent('-', level);
-		printf("<%d> tag: %d %s  name: \"%s\"",level,tag,tagname,name);
+		//printf("\n");
+		//printIndent('-', level);
+		//printf("<%d> tag: %d %s  name: \"%s\"",level,tag,tagname,name);
 		fprintf(g_userFunc, "%d\t%s\n", ++g_counter, name);	
 		if( tag == DW_TAG_variable )
 		{
@@ -299,10 +317,25 @@ print_die_data(Dwarf_Debug dbg, Dwarf_Die print_me,int level,
 				Error(res, "SEARCHING external attribute3", false);
 			}
 			
-			if( bExternal )
-				; // skip global variables
+			if( !bExternal )
+				return ; // skip non-global variables
+			printIndent('-', level);
+			printf("<%d> tag: %d %s  name: \"%s\"",level,tag,tagname,name);
 			//else
-			{
+			{	
+				// 1. obtain the size
+				Dwarf_Off offset;
+				res = dwarf_attr(print_me, DW_AT_type, &attr, &error);
+				Error(res, "SEARCHING type attribute", true);
+				res = dwarf_global_formref(attr, &offset, &error);
+				Error(res, "SEARCHING value of type attribute", true);	
+				Dwarf_Die typeDie = 0;
+				res = dwarf_offdie(dbg, offset, &typeDie, &error);
+				Error(res, "SEARCHING die of type value", true);	
+				unsigned int nSize = CTool::GetTypeSize(dbg, typeDie, "");
+				printf(":\t[%d]@", nSize);
+
+				// 2. obtain the location
 				res = dwarf_hasattr( print_me, DW_AT_location, &bAttr, &error);
 				Error(res, "SEARCHING location attribute1", true);
 				if( res == DW_DLV_OK && bAttr == true)
@@ -324,14 +357,14 @@ print_die_data(Dwarf_Debug dbg, Dwarf_Die print_me,int level,
 					Dwarf_Loc *loc = locdesc->ld_s;
 					if( loc->lr_atom == DW_OP_fbreg )
 					{
-						offset = _dwarf_decode_s_leb128( (unsigned char *)(&loc->lr_number), NULL );
+						//offset = _dwarf_decode_s_leb128( (unsigned char *)(&loc->lr_number), NULL );
 						printIndent(' ', level);
 						printf(":\tesb[%d] @@location\n", (int)offset );
 						dump(name, offset, false, 0);
 					}
 					else if( loc->lr_atom == DW_OP_breg5 )
 					{
-						offset = _dwarf_decode_s_leb128( (unsigned char *)(&loc->lr_number), NULL );
+						//offset = _dwarf_decode_s_leb128( (unsigned char *)(&loc->lr_number), NULL );
 						printIndent(' ', level);
 						printf(":\tebp[%d] @@location\n", (int)offset );
 						dump(name, offset, false, 0);
@@ -353,7 +386,7 @@ print_die_data(Dwarf_Debug dbg, Dwarf_Die print_me,int level,
 			
 		}
 		else 
-			printf("\n");
+			printf("");
 	}
 
     if(!localname) {
@@ -451,4 +484,5 @@ bool VerifiedUserFunc( Dwarf_Die cur_die)
 	}
 	return true;
 }
+
 
