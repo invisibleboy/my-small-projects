@@ -38,8 +38,9 @@ struct MemBlock
 	ADDRINT _nSize;
 	UINT32 _nID;
 
-	MemBlock(ADDRINT addr, ADDRINT nSize)
+	MemBlock(UINT32 nID, ADDRINT addr, ADDRINT nSize)
 	{
+		_nID = nID;
 		_nStartAddr = addr;
 		_nSize = nSize;
 	}
@@ -92,7 +93,7 @@ class CHeapAllocator: public CAllocator
 public:
 	CHeapAllocator(ADDRINT nSize, ADDRINT nLineSize, string szTraceFile) : CAllocator(nSize, nLineSize, szTraceFile)
 	{
-		MemBlock *block = new MemBlock(m_nSize-1, m_nSize);
+		MemBlock *block = new MemBlock(0, m_nSize-1, m_nSize);
 		m_freeBlocks.push_back(block);
 		m_lastPlace = m_freeBlocks.begin();
 	}
