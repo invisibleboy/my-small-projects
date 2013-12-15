@@ -80,7 +80,7 @@ else
 
 	##for pcm wear leveling
 	OPTION="$PIN -t $PIN_TOOL $PIN_OPTION -- "
-	echo "./runme_small.sh $OPTION"
+	echo "./runme_large.sh $OPTION"
 	./runme_small.sh $OPTION
 fi
 
