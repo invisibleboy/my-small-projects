@@ -1,3 +1,8 @@
+/*
+This file is used to compute the VoC for PCM wear levelling.
+*/
+
+
 #include <string>
 #include <iostream>
 #include <fstream>
@@ -29,7 +34,7 @@ void read(string szFile, list<double> &writes)
 		++ nCount;
 	
 		stringstream ss(szLine);
-		ss >>hex >> nAddr >> dec >> dWrite;
+		ss >>hex >> nAddr >> dec >> dWrite >> dWrite;
 		writes.push_back(dWrite); 	
 		
 	}
@@ -54,7 +59,7 @@ double compute(string szFile, UINT64 nLen)
 		sum += *I;	
 
 	double exp = sum/g_writes.size()/4;
-	//cerr << "sum:\t" << sum << endl;
+	cerr << "sum/exp:\t" << sum << "/" << exp << endl;
 
 	// 2. compute sum of variance
 	double sumVariance = 0.0;
@@ -68,12 +73,12 @@ double compute(string szFile, UINT64 nLen)
 		
 	}
 	
-	cerr << "sumVariance:\t" << sumVariance << endl;
+	//cerr << "sumVariance:\t" << sumVariance << endl;
 
 	// 3. compute standard deviation
 	double stdDev = sumVariance*4/(g_writes.size()*4-1);
 	double wear = sqrt(stdDev)/exp;
-	//cerr << "wear:\t" << wear << endl;
+	cerr << "wear:\t" << wear << endl;
 	
 	return wear;
 }
